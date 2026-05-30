@@ -1,21 +1,47 @@
-const dotenv = require('dotenv');
-const path = require('path');
+require('dotenv').config();
 
-// Ensure we pick up the local .env file inside the backend workspace
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-
-const _config = {
-  port: parseInt(process.env.PORT, 10) || 3000,
-  fallbackPort: 4000,
-  dbUri: process.env.MONGODB_URI,
-  env: process.env.NODE_ENV || 'development'
-};
-
-// Check if essential parameters are missing before the engine fires up
-if (!_config.dbUri) {
-  console.error('❌ CRITICAL ERROR: MONGODB_URI is not defined inside your .env configuration file.');
-  process.exit(1);
+// 🚨 Core System Configuration Validation Guards
+if (!process.env.MONGODB_URI) {
+    console.error("❌ FATAL CONFIGURATION ERROR: MONGODB_URI is required but missing from environment variables.");
+    process.exit(1);
+}
+if (!process.env.JWT_SECRET) {
+    console.error("❌ FATAL CONFIGURATION ERROR: JWT_SECRET is required but missing.");
+    process.exit(1);
 }
 
-const config = Object.freeze(_config);
-module.exports = { config };
+// 📧 Mail Infrastructure Configuration Validation Guards
+const requiredMailEnvVars = ['EMAIL_USER', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'REFRESH_TOKEN'];
+const missingMailVars = requiredMailEnvVars.filter(key => !process.env[key]);
+
+if (missingMailVars.length > 0) {
+    console.error(`❌ FATAL CONFIGURATION ERROR: Mail service variables missing: ${missingMailVars.join(', ')}`);
+    process.exit(1);
+}
+
+const config = {
+    env: process.env.NODE_ENV || 'development',
+    port: parseInt(process.env.PORT, 10) || 3000,
+    db: { 
+        uri: process.env.MONGODB_URI 
+    },
+    jwt: {
+        secret: process.env.JWT_SECRET,
+        expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    },
+    redis: {
+        uri: process.env.REDIS_URL || null
+    },
+    google: {
+        genApiKey: process.env.GOOGLE_GEN_API_KEY || null
+    },
+    mail: {
+        user: process.env.EMAIL_USER,
+        clientId: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        refreshToken: process.env.REFRESH_TOKEN
+    }
+};
+
+Object.freeze(config);
+module.exports = config;

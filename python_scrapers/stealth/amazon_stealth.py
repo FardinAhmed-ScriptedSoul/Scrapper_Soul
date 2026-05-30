@@ -1,35 +1,13 @@
 import asyncio
 import os
 import re
+import sys
+import json
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup   # pip install beautifulsoup4
 from dotenv import load_dotenv  # type: ignore
 
 load_dotenv()
-
-def print_results(results, limit=10):
-    print("\n" + "=" * 60)
-    print(f" Stealth Matrix: Found {len(results)} results")
-    print("=" * 60)
-
-    for i, item in enumerate(results[:limit], start=1):
-        print(f"\n[{i}] {item['title']}")
-        print("-" * 60)
-
-        if item["authors"]:
-            print("👤 Authors :", ", ".join(item["authors"]))
-
-        print(f"💰 Price   : ${item['price']:.2f}" if item["price"] else "💰 Price   : N/A")
-        print("⭐ Rating  :", item["rating"] if item["rating"] else "N/A")
-        print("📝 Reviews :", item["reviews"])
-
-        if item["url"]:
-            print("🔗 URL     :", f"https://www.amazon.com{item['url']}")
-
-        if item["image"]:
-            print("🖼️ Image  :", item["image"])
-
-    print("\n" + "=" * 60)
 
 def parse_amazon_html(html, search_term):
     soup = BeautifulSoup(html, "html.parser")
@@ -81,37 +59,35 @@ def parse_amazon_html(html, search_term):
         image_el = el.select_one("img.s-image")
         image = image_el.get("src") if image_el else None
 
+        # Build absolute URL mapping for clean delivery
+        product_url = f"https://www.amazon.com{url}" if url else ""
+
         results.append({
-            "searchTerm": search_term,
             "title": title,
             "authors": authors,
-            "url": url,
+            "productUrl": product_url,
             "price": price,
             "rating": rating,
-            "reviews": reviews,
-            "image": image
+            "reviewsCount": reviews,
+            "imageUrl": image
         })
 
     return results
 
 async def fetch_amazon_books_stealth(query):
-    base_url = os.getenv("BASE_URL_AMAZON") or "https://www.amazon.com"
+    base_url = "https://www.amazon.com"
     page_url = f"{base_url}/s?k={query}&i=stripbooks"
-    
-    print(f"🌐 Navigating in Local Stealth Mode to: {page_url}")
 
     async with async_playwright() as p:
-        # Launch with advanced engine arguments to hide automation hooks
         browser = await p.chromium.launch(
             headless=False,
             args=[
-                "--disable-blink-features=AutomationControlled", # Hides navigator.webdriver=true
-                "--disable-infobars",                            # Prevents "Chrome is controlled by automated software" bar
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
                 "--window-position=0,0"
             ]
         )
         
-        # Build an authentic human context structure
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             viewport={'width': 1280, 'height': 800},
@@ -121,19 +97,14 @@ async def fetch_amazon_books_stealth(query):
         
         page = await context.new_page()
 
-        # JavaScript injection script to patch and ensure window.chrome runtime integrity
         await page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             window.chrome = { runtime: {} };
         """)
 
         try:
-            response = await page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
-            status = response.status if response else "No Response"
-            print(f"HTTP Status: {status}")
-
-            # Natural dynamic pacing pause
-            await asyncio.sleep(4)
+            await page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(3) # Short hummanized load pause
             
             html_text = await page.content()
             
@@ -144,16 +115,22 @@ async def fetch_amazon_books_stealth(query):
 
         finally:
             await browser.close()
-            print("🔒 Stealth Browser safely closed.")
 
 async def main():
-    try:
-        query = "python"
-        results = await fetch_amazon_books_stealth(query)
-        print_results(results)
+    # ⚡️ AGENT CONTEXT ROUTING: Read dynamic values passed from Node.js child_process
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "Missing target search query argument"}))
+        sys.exit(1)
 
-    except Exception as error:
-        print("❌ Error fetching books:", str(error))
+    query_param = sys.argv[1]
+    
+    try:
+        results = await fetch_amazon_books_stealth(query_param)
+        # ⚡️ PURE COMMUNICATION CHANNEL: Output ONLY clean stringified JSON array
+        print(json.dumps(results))
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
