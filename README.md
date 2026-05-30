@@ -13,98 +13,9 @@ The Ultimate Truth: You do not need to lease an empire's infrastructure when you
 
 
 
-Website
-   │
-   ▼
-HTTP Request Sent
-   │
-   ▼
-HTML Response Received
-   │
-   ▼
-Parser Reads HTML
-   │
-   ▼
-Extract Required Data
-   │
-   ▼
-Save to:
-- CSV
-- Database
-- JSON
-- Excel
-
-
-
-
-Full Real-Life Example
-
-Amazon Website
-      │
-      ▼
-Scraper Fetches HTML
-      │
-      ▼
-Extract:
-- Name
-- Price
-- Rating
-      │
-      ▼
-Store in MongoDB
-      │
-      ▼
-Display in Dashboard
-
-
 #ABOUT THIS TOOL
 📚 Web Scrapyard: Advanced Multi-Platform Scrapers
 A high-performance, asynchronous web scraping repository built with Python, Playwright, and BeautifulSoup4. This codebase is explicitly designed to scrape data from high-security web targets (Amazon, Booking.com, and Indeed) using two distinct operational patterns: a lightweight Local Emulation Layer and an enterprise-grade Cloud Proxy Network Integration (Evomi).
-
-🏗️ System Architecture & Workflow
-
-
-┌────────────────────────────────────────────────────────────────────────┐
- │                      DEVELOPER WORKSPACE (Local Script)                │
- └───────────────────┬────────────────────────────────────────────────────┘
-                     │
-                     ▼
-        Is Evomi Proxy Configured?
-                     │
-      ┌──────────────┴──────────────┐
-      ▼ NO                          ▼ YES
-┌───────────────────────────┐ ┌───────────────────────────┐
-│   LOCAL EMULATION MODE    │ │    CLOUD PROXY MODE       │
-│  (Playwright Local Node)  │ │ (Evomi Residential/CDP)   │
-└─────────────┬─────────────┘ └─────────────┬─────────────┘
-              │                             │
-              ▼                             ▼
-┌───────────────────────────┐ ┌───────────────────────────┐
-│ • Headless=False Engine   │ │ • Dynamic Residential IP  │
-│ • Custom User-Agent Injection││ • Cloud-Side Fingerprinting│
-│ • Mimic Human Interactions│ │ • Automated CAPTCHA Evading│
-└─────────────┬─────────────┘ └─────────────┬─────────────┘
-              │                             │
-              └──────────────┬──────────────┘
-                             │
-                             ▼
-               ┌───────────────────────────┐
-               │    TARGET FIREWALL WALLS  │
-               │ (Amazon, Booking, Indeed) │
-               └─────────────┬─────────────┘
-                             │ (Bypassed Successfully)
-                             ▼
-               ┌───────────────────────────┐
-               │   BEAUTIFULSOUP 4 PARSER  │
-               │ • DOM Tree Normalization  │
-               │ • Regex Float Cleansing   │
-               └─────────────┬─────────────┘
-                             │
-                             ▼
-               ┌───────────────────────────┐
-               │    CLEAN DATA OUTPUT      │
-               │  Structured Terminal Logs │
-               └───────────────────────────┘
 
 
 
