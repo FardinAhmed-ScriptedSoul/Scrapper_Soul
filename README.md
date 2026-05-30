@@ -17,6 +17,25 @@ A simple SCRAPPING tool
 
 
 #ABOUT THIS TOOL
+
+[ User UI (React) ] ──( 1. Types "Python" )──> [ Backend API (Node/Express) ]
+                                                        │
+    ┌───────────────────────────────────────────────────┘
+    ▼
+[ 2. Check MongoDB Cache ]
+   ├── If Found? ──────( 3a. Return instant data from DB )──────> [ Back to User ] 🎉
+   └── If NOT Found? ──( 3b. Execute local_test_amazon_stealth )
+                                │
+                                ▼
+                       [ 4. Playwright Browser opens ]
+                       [ 5. Stealth flags mask webdriver ]
+                       [ 6. Scrapes 33 items safely ]
+                                │
+                                ▼
+                       [ 7. Save to MongoDB for next time ]
+                                │
+                                ▼
+                       [ 8. Send data to Frontend UI ] ─────────> [ Back to User ] 
 📚 Web Scrapyard: Advanced Multi-Platform Scrapers
 A high-performance, asynchronous web scraping repository built with Python, Playwright, and BeautifulSoup4. This codebase is explicitly designed to scrape data from high-security web targets (Amazon, Booking.com, and Indeed) using two distinct operational patterns: a lightweight Local Emulation Layer and an enterprise-grade Cloud Proxy Network Integration (Evomi).
 
