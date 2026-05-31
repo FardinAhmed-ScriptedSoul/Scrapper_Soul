@@ -30,8 +30,16 @@ const indeedJobSchema = new mongoose.Schema({
   },
   salaryInfo: {
     type: String,
-    default: 'Not disclosed',
+    default: 'Not Disclosed',
     trim: true
+  },
+  benefits: {
+    type: [String],
+    default: []
+  },
+  salaryEnriched: {
+    type: Boolean,
+    default: false
   },
   summary: {
     type: String,
@@ -42,11 +50,11 @@ const indeedJobSchema = new mongoose.Schema({
     required: true,
     trim: true
   }
-}, { 
-  timestamps: true 
+}, {
+  timestamps: true
 });
 
-// ⚡ COMPOUND INDEX: Guarantees lightning-fast lookups when checking for identical Title + Location pairs
+// Fast cache lookup by query pair
 indeedJobSchema.index({ jobTitleQuery: 1, locationQuery: 1 });
 
 module.exports = mongoose.model('IndeedJob', indeedJobSchema);

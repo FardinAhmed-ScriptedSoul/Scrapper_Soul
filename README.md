@@ -139,3 +139,36 @@ Plaintext
 🔒 Browser safely closed.
 ⚖️ License
 Distributed under the MIT License. See LICENSE for details.
+
+
+User Search Request
+       │
+       ▼
+MongoDB cache check
+  ├── HIT  → return cached docs instantly (may have enriched salary)
+  └── MISS ↓
+       │
+       ▼
+Python Playwright scraper (indeed_stealth.py)
+  - Visits indeed.com/jobs search page
+  - Scrapes 16 search cards
+  - Extracts: title, company, location, salaryText, benefits[], jobUrl
+       │
+       ▼
+insertMany → MongoDB (salaryEnriched: false)
+       │
+       ▼
+res.json() → Frontend receives data immediately
+       │
+       ▼ (fire-and-forget, user doesn't wait)
+enrichSalariesInBackground()
+  - Node.js Playwright visits each /viewjob URL
+  - 2 second delay between requests
+  - Scrapes real salary from detail page
+  - findByIdAndUpdate → salaryInfo + salaryEnriched: true
+  - If no salary found → salaryEnriched: true (don't retry)
+  - If request failed  → salaryEnriched stays false (retry later)
+
+
+  What would make everything real:
+FieldWhat's neededSuccess rateLog scrape attempts vs failures to DBBandwidthMeasure response sizes in the scraper and store themCPU on WindowsUse pidusage npm package instead of os.loadavg()Active enginesTrack actual spawned Python processes, not log countProxiesReal proxy pool integration

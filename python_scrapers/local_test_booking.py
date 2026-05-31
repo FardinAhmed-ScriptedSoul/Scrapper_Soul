@@ -1,140 +1,119 @@
 import asyncio
 import os
+import sys
+import json
 import urllib.parse
 from playwright.async_api import async_playwright
-from dotenv import load_dotenv  # type: ignore
 from bs4 import BeautifulSoup   # pip install beautifulsoup4
-
-# Load environment variables from .env
-load_dotenv()
 
 async def scrape_booking():
     browser = None
+    results = []
+
+    # Read dynamic command line arguments from your Express spawn engine
+    # Default to 'New York' if none passed manually via CLI
+    destination = sys.argv[1] if len(sys.argv) > 1 else "New York"
+    checkin = sys.argv[2] if len(sys.argv) > 2 else ""
+    checkout = sys.argv[3] if len(sys.argv) > 3 else ""
+
+    encoded_query = urllib.parse.quote(destination)
+    
+    # Build a production search URL passing dates if present
+    url = f"https://www.booking.com/searchresults.html?ss={encoded_query}&lang=en-us&sb=1"
+    if checkin and checkout:
+        url += f"&checkin={checkin}&checkout={checkout}"
 
     try:
         async with async_playwright() as p:
+            # Headless can be True in production to improve speed overhead
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                viewport={'width': 1280, 'height': 800}
+            )
+            
+            await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            page = await context.new_page()
+
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+
+            # Settle page scripts
+            await asyncio.sleep(2)
+
+            # Handle Cookie Popups structurally
             try:
-                # 🟢 UPDATE 1: Launch Playwright LOCALLY instead of using Evomi's cloud browser
-                print("🚀 Launching local Chromium browser...")
-                browser = await p.chromium.launch(headless=False)
-
-                # Set up context and page
-                context = await browser.new_context(viewport={'width': 1280, 'height': 800})
-                page = await context.new_page()
-            except Exception as e:
-                print(f"[ERROR] Failed to launch local browser: {e}")
-                return []
-
-            # Query setup for Booking.com
-            query = 'New York'
-            encoded_query = urllib.parse.quote(query)
-            url = f"https://www.booking.com/searchresults.html?ss={encoded_query}"
-            print(f"🌐 Navigating to: {url}")
-
-            # Navigate
-            try:
-                response = await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                status = response.status if response else "No response"
-                print(f"HTTP Status: {status}")
-            except Exception as e:
-                print(f"[ERROR] Navigation failed: {e}")
-                return []
-
-            # Handle Cookie popup if it appears
-            try:
-                await page.wait_for_selector('#onetrust-accept-btn-handler', timeout=5000)
-                await page.click('#onetrust-accept-btn-handler')
-                print("[INFO] Cookie popup accepted.")
+                await page.click('#onetrust-accept-btn-handler', timeout=3000)
             except Exception:
-                print("[INFO] No cookie popup found")
+                pass
 
-            # Wait for hotel property cards to appear on screen
-            print("⏳ Waiting for property cards to load...")
+            # Wait for elements
             try:
-                await page.wait_for_selector('[data-testid="property-card"]', timeout=15000)
-            except Exception as e:
-                print(f"[ERROR] Property cards not found: {e}")
-                await page.screenshot(path="booking_error.png")
-                print("[INFO] Saved booking_error.png to your project folder.")
-                return []
+                await page.wait_for_selector('[data-testid="property-card"]', timeout=10000)
+            except Exception:
+                # Print clean json error fallback instead of breaking the node pipeline stdout reader
+                print(json.dumps({"error": f"No property cards found on page for destination: {destination}"}))
+                return
 
-            # Smooth scroll down to trick lazy loaders
-            try:
-                print("📜 Scrolling down the page...")
-                await page.mouse.wheel(0, 3000)
-                await asyncio.sleep(2)
-            except Exception as e:
-                print(f"[WARNING] Scrolling failed: {e}")
+            # Trigger lazy structures
+            await page.mouse.wheel(0, 2000)
+            await asyncio.sleep(1)
 
-            # Parse HTML content with BeautifulSoup
-            try:
-                html_content = await page.content()
-                soup = BeautifulSoup(html_content, "html.parser")
-                cards = soup.select('[data-testid="property-card"]')[:10]
+            html_content = await page.content()
+            soup = BeautifulSoup(html_content, "html.parser")
+            cards = soup.select('[data-testid="property-card"]')[:10]
 
-                if not cards:
-                    print("[ERROR] No cards found in HTML parsing stage")
-                    return []
+            for card in cards:
+                try:
+                    name_el = card.select_one('[data-testid="title"]')
+                    link_el = card.select_one('[data-testid="title-link"]')
+                    rating_el = card.select_one('[data-testid="review-score"]')
+                    price_el = card.select_one('[data-testid="price-and-discounted-price"]')
+                    img_el = card.select_one('[data-testid="image"]') or card.select_one('img')
+                    location_el = card.select_one('[data-testid="address"]')
 
-                results = []
+                    # Reconstruct links perfectly
+                    hotel_url = link_el.get('href') if link_el else ""
+                    if hotel_url and hotel_url.startswith('/'):
+                        hotel_url = f"https://www.booking.com{hotel_url}"
+                    # Strip tracking parameters from clean URLs
+                    if hotel_url:
+                        hotel_url = hotel_url.split('?')[0]
 
-                for card in cards:
-                    try:
-                        # 🟢 UPDATE 2: Booking target fallback logic
-                        # Dynamic layouts can hide names in divs, spans, or a tags under data-testid
-                        name_el = card.select_one('[data-testid="title"]')
-                        rating_el = card.select_one('[data-testid="review-score"]')
+                    hotel_name = name_el.get_text(strip=True) if name_el else "N/A"
+                    
+                    hotel_rating = "0.0"
+                    if rating_el:
+                        raw_rating = rating_el.get_text(strip=True)
+                        # Filter standard values (e.g. "Scored 8.5")
+                        extracted_digits = [s for s in raw_rating.split() if s.replace('.', '', 1).isdigit()]
+                        if extracted_digits:
+                            hotel_rating = extracted_digits[0]
+                        elif "Scored" in raw_rating:
+                            hotel_rating = raw_rating.replace("Scored", "").strip()
 
-                        # Clean up text strings
-                        hotel_name = name_el.get_text(strip=True) if name_el else "N/A"
-                        hotel_rating = rating_el.get_text(strip=True) if rating_el else "No rating"
-                        
-                        # Extra cleanup: Booking often drops "Scored" or structural elements into raw rating strings
-                        if "Scored" in hotel_rating:
-                            hotel_rating = hotel_rating.replace("Scored", "").strip()
+                    price_text = price_el.get_text(strip=True) if price_el else "Price: Not disclosed"
+                    image_url = img_el.get('src') if img_el else ""
 
-                        results.append({
-                            "name": hotel_name,
-                            "rating": hotel_rating
-                        })
+                    # 🟢 SYNCED LAYOUT STRUCTURE MATCHING CONTROLLER RECORDS
+                    results.append({
+                        "title": hotel_name,
+                        "hotelUrl": hotel_url,
+                        "location": location_el.get_text(strip=True) if location_el else destination,
+                        "priceText": price_text,
+                        "rating": hotel_rating,
+                        "imageUrl": image_url
+                    })
+                except Exception:
+                    continue
 
-                    except Exception as e:
-                        print(f"[WARNING] Failed to parse card element: {e}")
-                        continue
-
-            except Exception as e:
-                print(f"[ERROR] Parsing failed: {e}")
-                return []
-
-            # Clean output display loop
-            if not results:
-                print("No results found.")
-                return []
-
-            print("\n" + "=" * 80)
-            print("🏨 FRESH SCRAPED HOTELS FROM BOOKING.COM:")
-            print("=" * 80)
-
-            for i, result in enumerate(results, 1):
-                name = result.get("name")
-                rating = result.get("rating")
-                print(f"\n[{i}] {name}")
-                print(f"    ⭐ Rating: {rating}")
-
-            print("\n" + "=" * 80)
-            return results
+            # CRITICAL FOR SPAWN PIPELINES: Output NOTHING to stdout but the clean raw valid JSON array
+            print(json.dumps(results))
 
     except Exception as e:
-        print(f"[FATAL ERROR] {e}")
-        return []
-
+        print(json.dumps({"error": str(e)}))
     finally:
         if browser:
-            try:
-                await browser.close()
-                print("🔒 Browser safely closed.")
-            except Exception as e:
-                print(f"[WARNING] Failed to close browser: {e}")
+            await browser.close()
 
 if __name__ == "__main__":
     asyncio.run(scrape_booking())

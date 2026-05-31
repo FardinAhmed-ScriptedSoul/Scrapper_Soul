@@ -14,26 +14,40 @@ async def scrape_indeed():
     try:
         async with async_playwright() as p:
             try:
-                # Launch Playwright LOCALLY instead of connecting to a remote cloud browser
                 print("🚀 Launching local Chromium browser...")
                 browser = await p.chromium.launch(headless=False)
 
-                # Set up context and page
-                context = await browser.new_context(viewport={'width': 1280, 'height': 800})
+                # 🟢 FINE-TUNING 1: Pass real User-Agent identity parameters to the browser context
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={'width': 1280, 'height': 800}
+                )
+                
+                # 🟢 FINE-TUNING 2: Remove Playwright's automation footprints
+                await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
                 page = await context.new_page()
             except Exception as e:
                 print(f"[ERROR] Failed to launch local browser: {e}")
                 return []
 
+            # 🟢 FINE-TUNING 3: Establish initial authorization cookie session states
+            print("🌐 Setting initial structural session state on base domain...")
+            try:
+                await page.goto("https://www.indeed.com", wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(2)
+            except Exception as e:
+                print(f"[WARNING] Base domain routing lookup failed: {e}")
+
             # Target URL setup
             url = "https://www.indeed.com/jobs?q=software+developer&l=New+York%2C+NY"
-            print(f"🌐 Navigating to: {url}")
+            print(f"🎯 Routing pipeline to query data layout: {url}")
 
             # Navigate
             try:
                 response = await page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 status = response.status if response else "No response"
                 print(f"HTTP Status: {status}")
+                await asyncio.sleep(3) # Settle dynamic scripts
             except Exception as e:
                 print(f"[ERROR] Navigation failed: {e}")
                 return []
@@ -76,27 +90,36 @@ async def scrape_indeed():
 
                 results = []
 
-                # 🟢 FIX: Properly aligned loop block to prevent IndentationErrors
                 for card in cards:
                     try:
-                        # Fall back between anchor tags and spans to capture changing selectors
                         title_link = card.select_one('h2.jobTitle a')
                         title_el = card.select_one('h2.jobTitle span')
                         
+                        job_title = "N/A"
+                        job_url = ""
+
+                        # 🟢 GATEWAY FIX: Build a complete qualified link structure for LAUNCH NODE elements
                         if title_link:
                             job_title = title_link.get_text(strip=True)
+                            relative_url = title_link.get('href')
+                            if relative_url:
+                                job_url = f"https://www.indeed.com{relative_url}"
                         elif title_el:
                             job_title = title_el.get_text(strip=True)
-                        else:
-                            job_title = "N/A"
 
                         company_el = card.select_one('[data-testid="company-name"]')
                         location_el = card.select_one('[data-testid="text-location"]')
+                        
+                        # 🟢 EXTRACT METRICS: Parse target salary container info explicitly
+                        salary_el = card.select_one('[data-testid="metadata-salary-info"]') or card.select_one('.salary-snippet-container')
+                        salary_text = salary_el.get_text(strip=True) if salary_el else "Salary Range: Not disclosed"
 
                         results.append({
                             "title": job_title,
+                            "url": job_url,
                             "company": company_el.get_text(strip=True) if company_el else "N/A",
-                            "location": location_el.get_text(strip=True) if location_el else "N/A"
+                            "location": location_el.get_text(strip=True) if location_el else "N/A",
+                            "yield_metrics": salary_text
                         })
 
                     except Exception as e:
@@ -120,9 +143,13 @@ async def scrape_indeed():
                 title = result.get("title")
                 company = result.get("company")
                 location = result.get("location")
+                metrics = result.get("yield_metrics")
+                job_link = result.get("url")
                 print(f"\n[{i}] {title}")
                 print(f"    🏢 Company: {company}")
                 print(f"    📍 Location: {location}")
+                print(f"    💵 Metrics: {metrics}")
+                print(f"    🔗 Link: {job_link[:60]}...")
 
             print("\n" + "=" * 80)
             return results

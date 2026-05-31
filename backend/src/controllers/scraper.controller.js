@@ -11,6 +11,9 @@ const parseRatingToNumber = (ratingStr) => {
   return match ? parseFloat(match[0]) : 0;
 };
 
+// ✅ FIXED PIPELINE TARGET: Points node directly to your root venv python.exe
+const pythonExecutable = path.resolve(__dirname, '../../../venv/Scripts/python.exe');
+
 // ==========================================
 // 1. AMAZON CONTROLLER
 // ==========================================
@@ -31,7 +34,8 @@ const searchAmazon = async (req, res) => {
     }
 
     const scriptPath = path.resolve(__dirname, '../../../python_scrapers/stealth/amazon_stealth.py');
-    const pythonProcess = spawn('python', [scriptPath, normalizedQuery]);
+    // ✅ FIXED: Spawns using the venv python executable explicitly
+    const pythonProcess = spawn(pythonExecutable, [scriptPath, normalizedQuery]);
 
     let dataBuffer = "";
     let errorBuffer = "";
@@ -80,69 +84,169 @@ const searchIndeed = async (req, res) => {
     if (!role || !location) {
       return res.status(400).json({ success: false, error: "Both role and location parameters are required." });
     }
-    
-    const normalizedRole = role.trim().toLowerCase();
-    const normalizedLoc = location.trim().toLowerCase();
 
-    // Query adjusted to look for your correct Mongoose structural fields
+    const normalizedRole = role.trim().toLowerCase();
+    let normalizedLoc = location.trim().toLowerCase();
+
+    if (["on site", "onsite"].includes(normalizedLoc)) normalizedLoc = "onsite";
+    else if (normalizedLoc === "hybrid") normalizedLoc = "hybrid";
+    else if (["remote", "anywhere"].includes(normalizedLoc)) normalizedLoc = "remote";
+
+    // ── Cache check ───────────────────────────────────────────────────────────
     const cachedData = await IndeedJob.find({ jobTitleQuery: normalizedRole, locationQuery: normalizedLoc });
     if (cachedData.length > 0) {
-      return res.status(200).json({
-        success: true,
-        source: "mongodb_cache",
-        count: cachedData.length,
-        data: cachedData
-      });
+      return res.status(200).json({ success: true, source: "mongodb_cache", count: cachedData.length, data: cachedData });
     }
 
+    // ── Spawn Python scraper ──────────────────────────────────────────────────
     const scriptPath = path.resolve(__dirname, '../../../python_scrapers/stealth/indeed_stealth.py');
-    const pythonProcess = spawn('python', [scriptPath, normalizedRole, normalizedLoc]);
+    const pythonProcess = spawn(pythonExecutable, [scriptPath, normalizedRole, normalizedLoc]);
 
     let dataBuffer = "";
     let errorBuffer = "";
-
     pythonProcess.stdout.on('data', (data) => { dataBuffer += data.toString(); });
     pythonProcess.stderr.on('data', (data) => { errorBuffer += data.toString(); });
 
     pythonProcess.on('close', async (code) => {
       if (code !== 0) {
-        console.error(`❌ Indeed Script Exit Code: ${code}. StdErr: ${errorBuffer}`);
-        return res.status(500).json({ success: false, error: "Indeed Stealth connection dropped." });
+        console.error(`❌ Indeed scraper exited with code ${code}:`, errorBuffer.slice(0, 300));
+        return res.status(500).json({ success: false, error: "Indeed stealth engine failure." });
       }
-      
+
       const trimmedOutput = dataBuffer.trim();
+
+      if (!trimmedOutput) {
+        console.error("❌ Indeed script returned empty output.");
+        return res.status(500).json({ success: false, error: "Indeed returned no data. Possible bot detection." });
+      }
+
       let parsedItems;
-      
       try {
         parsedItems = JSON.parse(trimmedOutput);
       } catch (jsonErr) {
-        console.error("❌ Indeed JSON Parse Exception. Raw buffer output was:", trimmedOutput);
-        return res.status(500).json({ success: false, error: "Failed to cleanly parse data streaming output from the Indeed script." });
+        console.error("❌ Indeed JSON parse failed. Raw:", trimmedOutput.slice(0, 300));
+        return res.status(500).json({ success: false, error: "Failed to parse Indeed script output." });
       }
 
-      if (parsedItems.error) return res.status(500).json({ success: false, error: parsedItems.error });
+      if (!Array.isArray(parsedItems)) {
+        return res.status(500).json({ success: false, error: parsedItems.error || "Unexpected Indeed output." });
+      }
 
+      if (parsedItems.length === 0) {
+        return res.status(200).json({ success: true, source: "live_stealth_scraper", count: 0, data: [] });
+      }
+
+      // ── Persist to MongoDB ────────────────────────────────────────────────
       try {
-        // Aligned perfectly with your Mongoose structural fields
         const recordsToSave = parsedItems.map(item => ({
-          jobTitleQuery: normalizedRole, 
-          locationQuery: normalizedLoc,  
-          title: item.title,
-          company: item.company,
-          location: item.location,
-          salaryText: item.salaryText,
-          jobUrl: item.jobUrl
+          jobTitleQuery: normalizedRole,
+          locationQuery: normalizedLoc,
+          title:          item.title    || "Job Opportunity",
+          company:        item.company  || "N/A",
+          location:       item.location || "Remote / Unspecified",
+          salaryInfo:     item.salaryText || item.salaryInfo || "Not Disclosed",
+          benefits:       Array.isArray(item.benefits) ? item.benefits : [],
+          jobUrl:         item.jobUrl   || "https://www.indeed.com",
+          salaryEnriched: false
         }));
 
         const savedData = await IndeedJob.insertMany(recordsToSave);
-        return res.status(200).json({ success: true, source: "live_stealth_scraper", count: savedData.length, data: savedData });
+
+        // ── Fire-and-forget background salary enrichment ──────────────────
+        // Runs after response is sent — visits each detail page silently,
+        // updates salaryInfo + salaryEnriched flag in MongoDB for future use.
+        enrichSalariesInBackground(savedData).catch(err =>
+          console.error("❌ Background salary enrichment error:", err.message)
+        );
+
+        return res.status(200).json({
+          success: true,
+          source: "live_stealth_scraper",
+          count: savedData.length,
+          data: savedData
+        });
       } catch (dbErr) {
-        console.error("❌ Indeed MongoDB Write/Validation Exception:", dbErr);
-        return res.status(500).json({ success: false, error: "Database rejected parsed Indeed items constraint layout.", details: dbErr.message });
+        console.error("❌ Indeed MongoDB Write Exception:", dbErr);
+        return res.status(500).json({ success: false, error: "Database write failed.", details: dbErr.message });
       }
     });
+
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// ── Background salary enrichment ─────────────────────────────────────────────
+// Fires after res.json() — user never waits for this.
+// Visits each /viewjob page, scrapes salary, patches the MongoDB doc.
+// On next cache hit that document will have real salary data.
+const enrichSalariesInBackground = async (savedDocs) => {
+  const { chromium } = require('playwright');
+  const cheerio = require('cheerio');
+
+  let browser;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--disable-blink-features=AutomationControlled", "--disable-infobars"]
+    });
+
+    const context = await browser.newContext({
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      locale: "en-US"
+    });
+
+    for (const doc of savedDocs) {
+      // Skip if already enriched or no real job URL
+      if (doc.salaryEnriched || !doc.jobUrl.includes('jk=')) continue;
+
+      try {
+        const page = await context.newPage();
+        await page.goto(doc.jobUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+        await page.waitForTimeout(2000);
+
+        const html = await page.content();
+        await page.close();
+
+        const $ = cheerio.load(html);
+
+        // Indeed detail page salary — try selectors in priority order
+        let salaryText = '';
+        const salarySelectors = [
+          '#salaryInfoAndJobType span',
+          '[data-testid="attribute_snippet_testid"]',
+          '[class*="salary"] span',
+          '[class*="Salary"] span',
+        ];
+        for (const sel of salarySelectors) {
+          const text = $(sel).first().text().trim();
+          if (text) { salaryText = text; break; }
+        }
+
+        if (salaryText) {
+          await IndeedJob.findByIdAndUpdate(doc._id, {
+            salaryInfo: salaryText,
+            salaryEnriched: true
+          });
+          console.log(`✅ Salary enriched [${doc.title}]: ${salaryText}`);
+        } else {
+          // No salary on detail page either — mark done to avoid re-visiting
+          await IndeedJob.findByIdAndUpdate(doc._id, { salaryEnriched: true });
+          console.log(`ℹ️  No salary found for [${doc.title}] — marked enriched`);
+        }
+
+      } catch (err) {
+        console.warn(`⚠️  Enrichment skipped [${doc.jobUrl}]: ${err.message}`);
+        // Don't mark enriched — will retry on next scrape cycle for this query
+      }
+
+      // 2s delay between requests — avoids rate limiting / bot detection
+      await new Promise(r => setTimeout(r, 2000));
+    }
+
+  } finally {
+    if (browser) await browser.close();
+    console.log("✅ Background salary enrichment pass complete.");
   }
 };
 
@@ -160,19 +264,25 @@ const searchBooking = async (req, res) => {
     const targetIn = checkIn.trim();
     const targetOut = checkOut.trim();
 
-    // Query adjusted to match your correct model keys
-    const cachedData = await BookingHotel.find({ destinationQuery: targetDest, checkInDate: targetIn, checkOutDate: targetOut });
+    // 1. Try to fulfill request via Mongo Cache Layer
+    const cachedData = await BookingHotel.find({ 
+      destinationQuery: targetDest, 
+      checkInDate: targetIn, 
+      checkOutDate: targetOut 
+    });
+
     if (cachedData.length > 0) {
       return res.status(200).json({
         success: true,
         source: "mongodb_cache",
         count: cachedData.length,
-        data: cachedData
+        data: cachedData // 🟢 ALIGNED: Returns direct schema objects containing .hotelUrl
       });
     }
 
+    // 2. Fallback to live data generation pipeline
     const scriptPath = path.resolve(__dirname, '../../../python_scrapers/stealth/booking_stealth.py');
-    const pythonProcess = spawn('python', [scriptPath, targetDest, targetIn, targetOut]);
+    const pythonProcess = spawn(pythonExecutable, [scriptPath, targetDest, targetIn, targetOut]);
 
     let dataBuffer = "";
     let errorBuffer = "";
@@ -192,31 +302,37 @@ const searchBooking = async (req, res) => {
       try {
         parsedItems = JSON.parse(trimmedOutput);
       } catch (jsonErr) {
-        console.error("❌ Booking JSON Parse Exception. Raw buffer output was:", trimmedOutput);
-        return res.status(500).json({ success: false, error: "Could not parse JSON array data streams from Booking script." });
+        console.error("❌ Booking JSON Parse Exception:", trimmedOutput);
+        return res.status(500).json({ success: false, error: "Could not parse JSON output from Booking script." });
       }
 
       if (parsedItems.error) return res.status(500).json({ success: false, error: parsedItems.error });
 
       try {
-        // Aligned fields with your Schema validation requirements and cast string to number
         const recordsToSave = parsedItems.map(item => ({
           destinationQuery: targetDest, 
           checkInDate: targetIn,
           checkOutDate: targetOut,
           hotelName: item.title,         
-          hotelUrl: item.hotelUrl,
+          hotelUrl: item.url || item.hotelUrl || "", // Reconciles python output stream variables
           location: item.location,
           priceText: item.priceText,
-          rating: parseRatingToNumber(item.rating), 
+          rating: Number(item.rating) || 0, 
           imageUrl: item.imageUrl
         }));
 
         const savedData = await BookingHotel.insertMany(recordsToSave);
-        return res.status(200).json({ success: true, source: "live_stealth_scraper", count: savedData.length, data: savedData });
+        
+        // 🟢 MATCHES AMAZON PATTERN: Returns savedData directly to resolve frontend hover element issues
+        return res.status(200).json({ 
+          success: true, 
+          source: "live_stealth_scraper", 
+          count: savedData.length, 
+          data: savedData 
+        });
       } catch (dbErr) {
-        console.error("❌ Booking MongoDB Write/Validation Exception:", dbErr);
-        return res.status(500).json({ success: false, error: "Database rejected parsed Booking items constraint layout.", details: dbErr.message });
+        console.error("❌ Booking MongoDB Write Exception:", dbErr);
+        return res.status(500).json({ success: false, error: "Database rejected parsed Booking items.", details: dbErr.message });
       }
     });
   } catch (error) {
@@ -224,18 +340,16 @@ const searchBooking = async (req, res) => {
   }
 };
 
-
 const Post = require('../models/post.model.js');
 
 const getNewsFeed = async (req, res) => {
   try {
-    const { category } = req.query; // e.g., ?category=osint
+    const { category } = req.query;
     if (!category) return res.status(400).json({ success: false, error: "Category property filter parameter required." });
 
-    // Instantly find matching records sorted by newest first
     const posts = await Post.find({ category })
-                            .sort({ publishedAt: -1 })
-                            .limit(40); // Keep dashboard interface lightning snappy
+                           .sort({ publishedAt: -1 })
+                           .limit(40);
 
     return res.status(200).json({
       success: true,
@@ -247,11 +361,9 @@ const getNewsFeed = async (req, res) => {
   }
 };
 
-// Don't forget to append it to your module.exports at the bottom of the file!
 module.exports = {
   searchAmazon,
   searchIndeed,
   searchBooking,
   getNewsFeed 
 };
-

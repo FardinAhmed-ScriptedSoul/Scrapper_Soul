@@ -1,122 +1,46 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import React, { useState } from 'react';
+import { useAuth } from './context/AuthContext.jsx';
+import Login from './features/auth/components/Login.jsx';
+import Register from './features/auth/components/Register.jsx';
+import AppLayout from './components/layout/AppLayout.jsx';
+import OverviewDashboard from './features/dashboard/components/OverviewDashboard.jsx';
+import ScrapperConfig from './features/scrappers/components/ScrapperConfig.jsx';
+import TaskManager from './features/tasks/components/TaskManager.jsx';
+import ProxyManager from './features/proxies/components/ProxyManager.jsx';
+import SystemSettings from './features/settings/components/SystemSettings.jsx';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const { isAuthenticated, isLoading, logout } = useAuth();
+  const [authView, setAuthView] = useState('login'); // 'login' | 'register'
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Display a dark system initializing screen during active session token validations
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full bg-[#0b141c] flex flex-col items-center justify-center font-mono select-none">
+        <div className="w-10 h-10 border-2 border-t-blue-500 border-slate-800 rounded-full animate-spin mb-4"></div>
+        <p className="text-xs text-slate-500 tracking-widest uppercase animate-pulse">Initializing Mainframe Handshake...</p>
+      </div>
+    );
+  }
+
+  // Route protection rules: If session token is unauthenticated, bind them to security gates
+  if (!isAuthenticated) {
+    if (authView === 'register') {
+      return <Register onNavigate={() => setAuthView('login')} />;
+    }
+    return <Login onNavigate={() => setAuthView('register')} />;
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <AppLayout activeTab={activeTab} setActiveTab={setActiveTab} onLogout={logout}>
+      {activeTab === 'dashboard' && <OverviewDashboard />}
+      {activeTab === 'scrappers' && <ScrapperConfig />}
+      {activeTab === 'tasks' && <TaskManager />}
+      {activeTab === 'proxies' && <ProxyManager />}
+      {activeTab === 'settings' && <SystemSettings />}
+    </AppLayout>
+  );
 }
 
-export default App
+export default App;
