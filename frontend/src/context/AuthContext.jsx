@@ -12,16 +12,31 @@ export const AuthProvider = ({ children }) => {
   const [isOtpPending, setIsOtpPending] = useState(false);
   const [pendingEmail, setPendingEmail] = useState('');
 
+  // 🚀 Authenticates session status instantly on refresh
   useEffect(() => {
     const initializeSession = async () => {
       try {
         const response = await authApi.getMe();
-        if (response && response.user) {
-          setUser(response.user);
+        
+        // Handle Axios wrapper strip vs raw payloads
+        const userData = response?.data || response;
+        
+        if (userData && (userData.id || userData._id || userData.username)) {
+          setUser({
+            _id: userData._id || userData.id,
+            username: userData.username,
+            email: userData.email,
+            ...userData
+          });
           setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+          setUser(null);
         }
       } catch (error) {
-        console.log("ℹ️ No active secure session cookie discovered on initialization.");
+        console.log("ℹ =] Active session validation check failed on browser initialization.");
+        setIsAuthenticated(false);
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
@@ -32,8 +47,6 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await authApi.login(email, password);
-
-      // ✅ Fix 1: Match actual backend status "pending_verification" (not "success")
       if (response.status === 'pending_verification' || response.status === 'success') {
         setPendingEmail(email);
         setIsOtpPending(true);
@@ -42,25 +55,45 @@ export const AuthProvider = ({ children }) => {
       return { otpRequired: false };
     } catch (error) {
       setIsOtpPending(false);
-      throw error.message || "Credentials verification processing fault.";
+      throw error.message || "Credentials processing error.";
     }
   };
 
-  const verifyOTP = async (otp) => {
-    try {
-      const response = await authApi.verifyLoginOTP(pendingEmail, otp);
+  // 🚀 Pass explicit email and otp straight into parameters to ensure zero state desyncs
+  // Ensure your verifyOTP function in AuthContext.jsx looks exactly like this:
+const verifyOTP = async (email, otp) => {
+  try {
+    const response = await authApi.verifyLoginOTP(email, otp);
+    const userData = response?.data?.user || response?.user || response?.data;
+    
+    if (userData) {
+      setUser({
+        _id: userData._id || userData.id,
+        username: userData.username,
+        email: userData.email,
+        ...userData
+      });
+      setIsAuthenticated(true);
+      setIsOtpPending(false);
+      setPendingEmail('');
+      return userData;
+    }
+  } catch (error) {
+    throw error.message || "Invalid validation code.";
+  }
+};
 
-      // ✅ Fix 2: Backend nests user under response.data.user, not response.user
-      const userData = response.data?.user || response.user;
-      if (userData) {
-        setUser(userData);
-        setIsAuthenticated(true);
-        setIsOtpPending(false);
-        setPendingEmail('');
-        return userData;
-      }
-    } catch (error) {
-      throw error.message || "Invalid or expired verification code entered.";
+  const registerVerifySync = (userData) => {
+    if (userData) {
+      setUser({
+        _id: userData._id || userData.id,
+        username: userData.username,
+        email: userData.email,
+        ...userData
+      });
+      setIsAuthenticated(true);
+      setIsOtpPending(false);
+      setPendingEmail('');
     }
   };
 
@@ -68,7 +101,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await authApi.logout();
     } catch (error) {
-      console.error("⚠️ Server-side cookie clear reported anomalies:", error.message);
+      console.error("⚠️ Logout error:", error.message);
     } finally {
       setUser(null);
       setIsAuthenticated(false);
@@ -86,6 +119,7 @@ export const AuthProvider = ({ children }) => {
       pendingEmail,
       login,
       verifyOTP,
+      registerVerifySync,
       logout,
       setIsOtpPending
     }}>
@@ -97,7 +131,7 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be nested within an explicitly declared AuthProvider engine loop.');
+    throw new Error('useAuth must be nested within an AuthProvider.');
   }
   return context;
 };

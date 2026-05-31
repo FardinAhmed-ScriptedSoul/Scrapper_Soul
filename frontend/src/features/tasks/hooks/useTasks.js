@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import api from '../../../api/api.js';
 
 export function useTasks() {
@@ -6,53 +6,72 @@ export function useTasks() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Function to load tasks from the database
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
-      const response = await api.get('/tasks');
-      // Extract array based on your standard API response structure
-      setTasks(response?.data || response || []);
+      const response = await api.get('/dashboard/tasks');
+      const resData = response?.data || response;
+      setTasks(resData?.data || resData || []);
       setError(null);
     } catch (err) {
       setError(err.message || 'Failed to sync extraction task queues from server.');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Sync tasks on mount
-  useEffect(() => {
-    fetchTasks();
   }, []);
 
-  // Action: Modify a running task state (pause, resume, kill)
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
   const controlTask = async (id, action) => {
     try {
-      const response = await api.post(`/tasks/${id}/control`, { action });
-      const updatedTask = response?.data || response;
-
-      // Optimistically update the local component state tree
-      setTasks(prevTasks =>
-        prevTasks.map(task => (task.id === id ? { ...task, ...updatedTask } : task))
-      );
-      return updatedTask;
+      const response = await api.post('/dashboard/tasks/control', { jobId: id, action });
+      const resData = response?.data || response;
+      if (resData.success) {
+        await fetchTasks();
+      }
     } catch (err) {
-      console.error(`[Task Controller Fault] Action: ${action} on ID: ${id}`, err);
+      console.error('[Task Control Fault Intercepted]', err);
       throw err;
     }
   };
 
-  // Action: Deploy a brand-new scraper workflow
-  const deployTask = async (taskConfig) => {
+  const exportTaskCSV = async (task) => {
     try {
-      const response = await api.post('/tasks/deploy', taskConfig);
-      const newTask = response?.data || response;
-      setTasks(prev => [newTask, ...prev]);
-      return newTask;
+      const engineRouteMap = {
+        amazon:  `/scrape/amazon?query=${encodeURIComponent(task.query || '')}`,
+        indeed:  `/scrape/indeed?role=${encodeURIComponent(task.query || '')}&location=${encodeURIComponent(task.location || '')}`,
+        booking: `/scrape/booking?destination=${encodeURIComponent(task.query || '')}`
+      };
+      const route = engineRouteMap[task.engine];
+      if (!route) return;
+
+      const response = await api.get(route);
+      const items = response?.data?.data || response?.data || [];
+      if (items.length === 0) return alert('No data to export.');
+
+      const headers = Object.keys(items[0]).join(',');
+      const rows = items.map(item =>
+        Object.values(item).map(v =>
+          typeof v === 'string' ? `"${v.replace(/\"/g, '\"\"')}"` : v
+        ).join(',')
+      ).join('\n');
+      const csv = `${headers}\n${rows}`;
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `${task.engine}_export_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err) {
-      throw err;
+      console.error('CSV Export failure:', err);
+      alert('Failed to construct data file.');
     }
   };
 
-  return { tasks, isLoading, error, controlTask, deployTask, refreshTasks: fetchTasks };
+  return { tasks, isLoading, error, refreshTasks: fetchTasks, controlTask, exportTaskCSV };
 }
+
+export default useTasks; // 🚀 Double safety fallback export

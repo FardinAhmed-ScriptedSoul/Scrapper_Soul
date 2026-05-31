@@ -10,10 +10,12 @@ const { getNewsFeed } = require('./controllers/scraper.controller.js');
 const app = express();
 
 // Standard cross-origin resource sharing middleware stack configuration
-app.use(cors({ 
-  origin: process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL : 'http://localhost:5173', 
-  credentials: true 
-})); 
+app.use(cors({
+    origin: 'http://localhost:5173', // ⚠️ CRITICAL: Replace with your exact frontend URL (Do NOT use '*')
+    credentials: true,               // ⚠️ CRITICAL: Allows cookies to stay active across cross-origin refreshes
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS','PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json({ limit: '16kb' })); 
 app.use(express.urlencoded({ extended: true, limit: '16kb' }));
 app.use(cookieParser()); 

@@ -25,7 +25,7 @@ export default function Login({ onNavigate }) {
         }
       } else {
         // Phase 2: Submit 6-Digit Verification Token
-        await verifyOTP(otpCode);
+        await verifyOTP(email, otpCode);
         // Successful verification automatically changes App view state through context
       }
     } catch (err) {

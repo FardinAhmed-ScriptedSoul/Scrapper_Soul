@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import api from '../../../api/api'; // Fall back to base API since authApi handles logins/dashboard
+import api from '../../../api/api'; 
+import { useAuth } from '../../../context/AuthContext'; // Import useAuth context hook
 import TerminalPanel from './TerminalPanel';
 
-export default function Register({ onNavigate }) {
+export default function Register() {
+  const { registerVerifySync } = useAuth(); // Consume the instant login synchronization hook
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [otpCode, setOtpCode] = useState('');
   const [isOtpPending, setIsOtpPending] = useState(false);
@@ -16,36 +18,30 @@ export default function Register({ onNavigate }) {
 
     try {
       if (!isOtpPending) {
-        // Phase 1 Request: Hand off payload data variables to standard verification engine
-        const response = await api.post('/auth/register-request', {
-          userName: formData.name, // Matches backend key requirement
-          email: formData.email,
-          password: formData.password
-        });
-        
+        // Phase 1: Request account activation OTP code code dispatch
+        const response = await authApi.registerRequest(formData.name, formData.email, formData.password);
         if (response.status === 'success' || response.message?.includes('OTP')) {
           setIsOtpPending(true);
         }
       } else {
-        // Phase 2 Request: Verify registration credentials token
-        await api.post('/auth/register-verify', {
-          email: formData.email,
-          otp: otpCode
-        });
+        // Phase 2: Verify registration OTP
+        const response = await authApi.registerVerify(formData.email, otpCode);
         
-        // Success: Redirect operator cleanly back to secure gateway portal
-        onNavigate();
+        // Match the backend controller structure: data: { user: { id, username, email } }
+        const targetUser = response?.data?.user || response?.user;
+        
+        if (targetUser) {
+          // Sync state instantly. Pushes routing rules straight into Dashboard view.
+          registerVerifySync(targetUser);
+        } else {
+          setLocalError("Account provisioning finished but data syncing failed. Please try logging in.");
+        }
       }
     } catch (err) {
-      setLocalError(err.message || 'Initialization Failed: Registration sequence halted.');
+      setLocalError(err.message || 'Initialization Failed.');
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleToggleView = () => {
-    setLocalError(null);
-    onNavigate();
   };
 
   return (
@@ -190,19 +186,6 @@ export default function Register({ onNavigate }) {
             </button>
           </form>
 
-          {/* Footer Toggle */}
-          <div className="text-center mt-6">
-            <p className="text-xs text-slate-400">
-              Already have an account?{' '}
-              <button 
-                onClick={handleToggleView}
-                disabled={isSubmitting}
-                className="text-blue-400 font-semibold hover:underline ml-1 cursor-pointer bg-transparent border-none outline-none disabled:opacity-50"
-              >
-                Sign In
-              </button>
-            </p>
-          </div>
         </div>
 
         {/* Micro System Telemetry Status Footer */}

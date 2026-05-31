@@ -32,9 +32,6 @@ const config = {
     redis: {
         uri: process.env.REDIS_URL || null
     },
-    // google: {
-    //     genApiKey: process.env.GOOGLE_GEN_API_KEY || null
-    // },
     mail: {
         user: process.env.EMAIL_USER,
         clientId: process.env.GOOGLE_CLIENT_ID,
