@@ -39,8 +39,31 @@ const userSchema = new mongoose.Schema({
   resetPasswordExpiry: {
     type: Date,
     default: null
+  },
+  notificationPreferences: {
+    type: new mongoose.Schema({
+      enabled: {
+        type: Boolean,
+        default: false
+      },
+      events: {
+        completed: {
+          type: Boolean,
+          default: true
+        },
+        failed: {
+          type: Boolean,
+          default: true
+        }
+      }
+    }, { _id: false }),
+    default: () => ({})
   }
 }, { timestamps: true });
+
+userSchema.virtual('userName').set(function (value) {
+  if (value && !this.username) this.username = value;
+});
 
 // Pre-save hook to hash password automatically
 userSchema.pre('save', async function () {

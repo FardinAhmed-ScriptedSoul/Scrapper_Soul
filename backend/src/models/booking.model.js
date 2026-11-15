@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const bookingHotelSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   destinationQuery: {
     type: String,
     required: true,
@@ -47,5 +51,6 @@ const bookingHotelSchema = new mongoose.Schema({
 
 // ⚡ COMPOUND INDEX: Optimizes lookups for exact destination and stay windows
 bookingHotelSchema.index({ destinationQuery: 1, checkInDate: 1, checkOutDate: 1 });
+bookingHotelSchema.index({ userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('BookingHotel', bookingHotelSchema);

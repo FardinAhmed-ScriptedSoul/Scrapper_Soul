@@ -1,65 +1,105 @@
 const Parser = require('rss-parser');
-const Post = require('../models/post.model.js');
-const parser = new Parser();
 const axios = require('axios');
+const { posts, feedSourceStatuses } = require('../repositories');
+const { RSS_FEEDS, CRYPTO_SOURCE, OSINT_SOURCE } = require('../config/feedSources.js');
 
-// Defined target streams for category feeds
-const FEEDS = [
-  // --- INTERNATIONAL NEWS ---
-  { name: 'BBC World News', url: 'http://feeds.bbci.co.uk/news/world/rss.xml', category: 'international' },
-  { name: 'Reuters Top News', url: 'https://news.google.com/rss/search?q=when:24h+site:reuters.com', category: 'international' },
-  
-  // --- IT / TECH WORLD ---
-  { name: 'TechCrunch', url: 'https://techcrunch.com/feed/', category: 'tech' },
-  { name: 'Wired Tech', url: 'https://www.wired.com/feed/category/gear/latest/rss', category: 'tech' },
-  
-  // --- OSINT / CYBERSECURITY ---
-  { name: 'The Hacker News', url: 'https://feeds.feedburner.com/TheHackerNews', category: 'osint' },
-  { name: 'BleepingComputer', url: 'https://www.bleepingcomputer.com/feed/', category: 'osint' }
-];
+const parser = new Parser();
+let activePipeline = null;
 
-const fetchGlobalFeeds = async () => {
-  console.log("🔄 Background Engine Triggered: Fetching RSS content streams...");
+const persistSourceStatus = async (source, startedAt, details) => {
+  const finishedAt = new Date();
+  const status = {
+    sourceId: source.id,
+    name: source.name,
+    provider: source.provider,
+    url: source.url,
+    category: source.category,
+    status: details.error ? 'failed' : 'success',
+    lastStartedAt: startedAt,
+    lastFinishedAt: finishedAt,
+    lastItemCount: details.itemCount,
+    lastNewCount: details.newCount,
+    durationMs: finishedAt.getTime() - startedAt.getTime(),
+    lastError: details.error ? details.error.slice(0, 1000) : null
+  };
+  if (!details.error) status.lastSuccessAt = finishedAt;
+
+  try {
+    await feedSourceStatuses.findOneAndUpdate(
+      { sourceId: source.id },
+      { $set: status },
+      { upsert: true, returnDocument: 'after', runValidators: true }
+    );
+  } catch (error) {
+    console.error(`Failed to record feed status for ${source.id}:`, error.message);
+  }
+};
+
+const fetchRssFeeds = async () => {
+  console.log('🔄 Fetching configured RSS content streams...');
   let newPostsCount = 0;
 
-  for (const feed of FEEDS) {
+  for (const feed of RSS_FEEDS) {
+    const startedAt = new Date();
+    let itemCount = 0;
+    let newCount = 0;
+    let failure = null;
+
     try {
       const parsedFeed = await parser.parseURL(feed.url);
-      const topItems = parsedFeed.items.slice(0, 10);
+      const topItems = (parsedFeed.items || []).slice(0, 10);
+      itemCount = topItems.length;
 
       for (const item of topItems) {
         const guidIdentifier = item.guid || item.id || item.link;
-        const exists = await Post.exists({ uniqueGuid: guidIdentifier });
-        
-        if (!exists) {
-          let img = "";
-          if (item.enclosure && item.enclosure.url) img = item.enclosure.url;
-          else if (item.content && item.content.match(/src="([^"]+)"/)) img = item.content.match(/src="([^"]+)"/)[1];
-
-          await Post.create({
-            category: feed.category,
-            title: item.title,
-            contentSummary: item.contentSnippet || item.summary || "",
-            sourceName: feed.name,
-            sourceUrl: item.link,
-            imageUrl: img,
-            uniqueGuid: guidIdentifier,
-            publishedAt: item.pubDate ? new Date(item.pubDate) : new Date()
-          });
-          newPostsCount++;
+        if (!guidIdentifier || !item.title || !item.link) {
+          throw new Error('RSS item is missing a stable identifier, title, or source link.');
         }
+
+        const exists = await posts.exists({ uniqueGuid: guidIdentifier });
+        if (exists) continue;
+
+        let imageUrl = '';
+        if (item.enclosure?.url) imageUrl = item.enclosure.url;
+        else if (item.content) imageUrl = item.content.match(/src="([^"]+)"/)?.[1] || '';
+
+        await posts.create({
+          category: feed.category,
+          title: item.title,
+          contentSummary: item.contentSnippet || item.summary || '',
+          sourceName: feed.name,
+          sourceUrl: item.link,
+          imageUrl,
+          uniqueGuid: guidIdentifier,
+          publishedAt: item.pubDate ? new Date(item.pubDate) : new Date()
+        });
+        newCount++;
+        newPostsCount++;
       }
-    } catch (feedError) {
-      console.error(`⚠️ Failed to parse updates from feed stream source [${feed.name}]:`, feedError.message);
+    } catch (error) {
+      failure = error.message || 'RSS source sync failed.';
+      console.error(`Failed to parse updates from feed source [${feed.name}]:`, failure);
     }
+
+    await persistSourceStatus(feed, startedAt, {
+      itemCount,
+      newCount,
+      error: failure
+    });
   }
+
   console.log(`✅ RSS sync complete. Ingested (${newPostsCount}) new timeline posts.`);
 };
 
 const fetchCryptoMarketData = async () => {
-  console.log("🪙 Background Engine Triggered: Fetching Crypto Market Trends...");
+  console.log('🪙 Fetching CoinGecko market data...');
+  const startedAt = new Date();
+  let itemCount = 0;
+  let newCount = 0;
+  let failure = null;
+
   try {
-    const response = await axios.get('https://api.coingecko.com/api/v3/coins/markets', {
+    const response = await axios.get(CRYPTO_SOURCE.url, {
       params: {
         vs_currency: 'usd',
         order: 'market_cap_desc',
@@ -69,87 +109,116 @@ const fetchCryptoMarketData = async () => {
       }
     });
 
-    const markets = response.data;
-    let newMarketPosts = 0;
+    if (!Array.isArray(response.data)) {
+      throw new Error('CoinGecko returned an invalid market-data response.');
+    }
+    itemCount = response.data.length;
 
-    for (const coin of markets) {
+    for (const coin of response.data) {
       const todayString = new Date().toISOString().split('T')[0];
       const uniqueGuid = `crypto-${coin.id}-${todayString}`;
-      const exists = await Post.exists({ uniqueGuid });
+      const exists = await posts.exists({ uniqueGuid });
+      if (exists) continue;
 
-      if (!exists) {
-        const isPositive = coin.price_change_percentage_24h >= 0;
-        const trendIndicator = isPositive ? '📈' : '📉';
-        
-        await Post.create({
-          category: 'crypto',
-          title: `${coin.name} (${coin.symbol.toUpperCase()}) updates at $${coin.current_price.toLocaleString()}`,
-          contentSummary: `${coin.name} is tracking ${trendIndicator} by ${coin.price_change_percentage_24h ? coin.price_change_percentage_24h.toFixed(2) : '0.00'}% over the past 24 hours. Market Cap: $${coin.market_cap.toLocaleString()}. Total trading volume: $${coin.total_volume.toLocaleString()}.`,
-          sourceName: 'CoinGecko Analytics',
-          sourceUrl: `https://www.coingecko.com/en/coins/${coin.id}`,
-          imageUrl: coin.image,
-          uniqueGuid: uniqueGuid,
-          publishedAt: new Date()
-        });
-        newMarketPosts++;
-      }
+      const isPositive = coin.price_change_percentage_24h >= 0;
+      const trendIndicator = isPositive ? '📈' : '📉';
+      await posts.create({
+        category: 'crypto',
+        title: `${coin.name} (${coin.symbol.toUpperCase()}) updates at $${coin.current_price.toLocaleString()}`,
+        contentSummary: `${coin.name} is tracking ${trendIndicator} by ${coin.price_change_percentage_24h ? coin.price_change_percentage_24h.toFixed(2) : '0.00'}% over the past 24 hours. Market Cap: $${coin.market_cap.toLocaleString()}. Total trading volume: $${coin.total_volume.toLocaleString()}.`,
+        sourceName: 'CoinGecko Analytics',
+        sourceUrl: `https://www.coingecko.com/en/coins/${coin.id}`,
+        imageUrl: coin.image,
+        uniqueGuid,
+        publishedAt: new Date()
+      });
+      newCount++;
     }
-    console.log(`✅ Crypto sync complete. Ingested (${newMarketPosts}) financial status cards.`);
   } catch (error) {
-    console.error("⚠️ Crypto API synchronization failed:", error.message);
+    failure = error.message || 'CoinGecko synchronization failed.';
+    console.error('CoinGecko synchronization failed:', failure);
   }
+
+  await persistSourceStatus(CRYPTO_SOURCE, startedAt, {
+    itemCount,
+    newCount,
+    error: failure
+  });
+  if (!failure) console.log(`✅ Crypto sync complete. Ingested (${newCount}) financial status cards.`);
 };
 
-const fetchTwitterOsintAlerts = async () => {
-  console.log("🕵️‍♂️ Background Engine Triggered: Gathering OSINT Timelines...");
+const fetchOsintAlerts = async () => {
+  console.log('🕵️‍♂️ Fetching OSINT timeline updates...');
+  const startedAt = new Date();
+  let itemCount = 0;
+  let newCount = 0;
+  let failure = null;
+
   try {
-    // Standard public Nitter proxy endpoint targeting vxunderground for reliable malware/ransomware technical alerts
-    const NITTER_OSINT_FEED = 'https://nitter.privacydev.net/vxunderground/rss';
-    
-    const parsedTwitterFeed = await parser.parseURL(NITTER_OSINT_FEED);
-    const updates = parsedTwitterFeed.items.slice(0, 10);
-    let newOsintAlerts = 0;
+    const parsedFeed = await parser.parseURL(OSINT_SOURCE.url);
+    const updates = (parsedFeed.items || []).slice(0, 10);
+    itemCount = updates.length;
 
-    for (const tweet of updates) {
-      const uniqueGuid = tweet.guid || tweet.link;
-      const exists = await Post.exists({ uniqueGuid });
-
-      if (!exists) {
-        // Strip out lingering HTML layouts from proxy text streams safely
-        const cleanContent = tweet.contentSnippet ? tweet.contentSnippet.replace(/(<([^>]+)>)/gi, "") : "";
-
-        await Post.create({
-          category: 'osint',
-          title: tweet.title ? (tweet.title.length > 80 ? tweet.title.substring(0, 80) + '...' : tweet.title) : 'Threat Intel update captured',
-          contentSummary: cleanContent || "No detailed intelligence text payload parsed.",
-          sourceName: 'X / @vxunderground (Nitter RSS Intel)',
-          sourceUrl: tweet.link,
-          imageUrl: "",
-          uniqueGuid: uniqueGuid,
-          publishedAt: tweet.pubDate ? new Date(tweet.pubDate) : new Date()
-        });
-        newOsintAlerts++;
+    for (const item of updates) {
+      const uniqueGuid = item.guid || item.link;
+      if (!uniqueGuid || !item.link) {
+        throw new Error('OSINT item is missing a stable identifier or source link.');
       }
+      const exists = await posts.exists({ uniqueGuid });
+      if (exists) continue;
+
+      const cleanContent = item.contentSnippet
+        ? item.contentSnippet.replace(/(<([^>]+)>)/gi, '')
+        : '';
+      await posts.create({
+        category: 'osint',
+        title: item.title
+          ? (item.title.length > 80 ? `${item.title.substring(0, 80)}...` : item.title)
+          : 'Threat Intel update captured',
+        contentSummary: cleanContent || 'No detailed intelligence text payload parsed.',
+        sourceName: 'X / @vxunderground (Nitter RSS Intel)',
+        sourceUrl: item.link,
+        imageUrl: '',
+        uniqueGuid,
+        publishedAt: item.pubDate ? new Date(item.pubDate) : new Date()
+      });
+      newCount++;
     }
-    console.log(`✅ OSINT live capturing complete. Ingested (${newOsintAlerts}) intelligence items.`);
   } catch (error) {
-    console.error("⚠️ OSINT timeline scraper threw exceptions:", error.message);
+    failure = error.message || 'OSINT feed synchronization failed.';
+    console.error('OSINT timeline sync failed:', failure);
   }
+
+  await persistSourceStatus(OSINT_SOURCE, startedAt, {
+    itemCount,
+    newCount,
+    error: failure
+  });
+  if (!failure) console.log(`✅ OSINT sync complete. Ingested (${newCount}) intelligence items.`);
 };
 
-// Master Orchestrator linking every worker stream together
-const runMasterPipeline = async () => {
-  console.log("\n==================================================");
-  console.log("🚀 STARTING PLATFORM CORE AGGREGATION MASTER SYNC");
-  console.log("==================================================");
-  
-  await fetchGlobalFeeds();
+const executeMasterPipeline = async () => {
+  console.log('\n==================================================');
+  console.log('🚀 STARTING PLATFORM CORE AGGREGATION MASTER SYNC');
+  console.log('==================================================');
+
+  await fetchRssFeeds();
   await fetchCryptoMarketData();
-  await fetchTwitterOsintAlerts(); // Core OSINT stream runner included
-  
-  console.log("==================================================");
-  console.log("⏳ MASTER PIPELINE SYNC COMPLETE. SYSTEM ACTIVE.");
-  console.log("==================================================\n");
+  await fetchOsintAlerts();
+
+  console.log('==================================================');
+  console.log('⏳ MASTER PIPELINE SYNC COMPLETE. SYSTEM ACTIVE.');
+  console.log('==================================================\n');
 };
 
-module.exports = { runMasterPipeline };
+const runMasterPipeline = () => {
+  if (activePipeline) return activePipeline;
+  activePipeline = executeMasterPipeline().finally(() => {
+    activePipeline = null;
+  });
+  return activePipeline;
+};
+
+const isFeedPipelineRunning = () => activePipeline !== null;
+
+module.exports = { runMasterPipeline, isFeedPipelineRunning };

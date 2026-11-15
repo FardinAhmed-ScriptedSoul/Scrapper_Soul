@@ -1,0 +1,13 @@
+.git
+.gitignore
+**/node_modules
+**/coverage
+**/dist
+**/.env*
+**/*.env
+**/.venv
+venv
+.venv
+__pycache__
+*.py[cod]
+*.log

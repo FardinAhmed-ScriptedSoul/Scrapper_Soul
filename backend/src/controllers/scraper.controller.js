@@ -1,8 +1,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
-const AmazonBook = require('../models/amazon.model.js');
-const IndeedJob = require('../models/indeed.model.js');
-const BookingHotel = require('../models/booking.model.js');
+const config = require('../config/config.js');
+const { amazonBooks, bookingHotels, indeedJobs, posts } = require('../repositories');
 
 // Helper function to extract a clean floating-point number for ratings (e.g., "Scored 8.2" -> 8.2)
 const parseRatingToNumber = (ratingStr) => {
@@ -12,7 +11,7 @@ const parseRatingToNumber = (ratingStr) => {
 };
 
 // ✅ FIXED PIPELINE TARGET: Points node directly to your root venv python.exe
-const pythonExecutable = path.resolve(__dirname, '../../../venv/Scripts/python.exe');
+const pythonExecutable = config.python.executable;
 
 // ==========================================
 // 1. AMAZON CONTROLLER
@@ -23,7 +22,10 @@ const searchAmazon = async (req, res) => {
     if (!query) return res.status(400).json({ success: false, error: "Query parameter is required" });
     const normalizedQuery = query.trim().toLowerCase();
 
-    const cachedData = await AmazonBook.find({ searchTerm: normalizedQuery });
+    const cachedData = await amazonBooks.find({
+      userId: req.user._id,
+      searchTerm: normalizedQuery
+    });
     if (cachedData.length > 0) {
       return res.status(200).json({
         success: true,
@@ -53,6 +55,7 @@ const searchAmazon = async (req, res) => {
         if (parsedItems.error) return res.status(500).json({ success: false, error: parsedItems.error });
 
         const recordsToSave = parsedItems.map(item => ({
+          userId: req.user._id,
           searchTerm: normalizedQuery,
           title: item.title,
           authors: item.authors || [],
@@ -63,7 +66,7 @@ const searchAmazon = async (req, res) => {
           imageUrl: item.imageUrl || ""
         }));
 
-        const savedData = await AmazonBook.insertMany(recordsToSave);
+        const savedData = await amazonBooks.insertMany(recordsToSave);
         return res.status(200).json({ success: true, source: "live_stealth_scraper", count: savedData.length, data: savedData });
       } catch (err) {
         console.error("❌ Amazon System Exception Processing Stack:", err);
@@ -93,7 +96,11 @@ const searchIndeed = async (req, res) => {
     else if (["remote", "anywhere"].includes(normalizedLoc)) normalizedLoc = "remote";
 
     // ── Cache check ───────────────────────────────────────────────────────────
-    const cachedData = await IndeedJob.find({ jobTitleQuery: normalizedRole, locationQuery: normalizedLoc });
+    const cachedData = await indeedJobs.find({
+      userId: req.user._id,
+      jobTitleQuery: normalizedRole,
+      locationQuery: normalizedLoc
+    });
     if (cachedData.length > 0) {
       return res.status(200).json({ success: true, source: "mongodb_cache", count: cachedData.length, data: cachedData });
     }
@@ -139,6 +146,7 @@ const searchIndeed = async (req, res) => {
       // ── Persist to MongoDB ────────────────────────────────────────────────
       try {
         const recordsToSave = parsedItems.map(item => ({
+          userId: req.user._id,
           jobTitleQuery: normalizedRole,
           locationQuery: normalizedLoc,
           title:          item.title    || "Job Opportunity",
@@ -150,7 +158,7 @@ const searchIndeed = async (req, res) => {
           salaryEnriched: false
         }));
 
-        const savedData = await IndeedJob.insertMany(recordsToSave);
+        const savedData = await indeedJobs.insertMany(recordsToSave);
 
         // ── Fire-and-forget background salary enrichment ──────────────────
         // Runs after response is sent — visits each detail page silently,
@@ -224,14 +232,14 @@ const enrichSalariesInBackground = async (savedDocs) => {
         }
 
         if (salaryText) {
-          await IndeedJob.findByIdAndUpdate(doc._id, {
+          await indeedJobs.findByIdAndUpdate(doc._id, {
             salaryInfo: salaryText,
             salaryEnriched: true
           });
           console.log(`✅ Salary enriched [${doc.title}]: ${salaryText}`);
         } else {
           // No salary on detail page either — mark done to avoid re-visiting
-          await IndeedJob.findByIdAndUpdate(doc._id, { salaryEnriched: true });
+          await indeedJobs.findByIdAndUpdate(doc._id, { salaryEnriched: true });
           console.log(`ℹ️  No salary found for [${doc.title}] — marked enriched`);
         }
 
@@ -265,7 +273,8 @@ const searchBooking = async (req, res) => {
     const targetOut = checkOut.trim();
 
     // 1. Try to fulfill request via Mongo Cache Layer
-    const cachedData = await BookingHotel.find({ 
+    const cachedData = await bookingHotels.find({
+      userId: req.user._id,
       destinationQuery: targetDest, 
       checkInDate: targetIn, 
       checkOutDate: targetOut 
@@ -310,6 +319,7 @@ const searchBooking = async (req, res) => {
 
       try {
         const recordsToSave = parsedItems.map(item => ({
+          userId: req.user._id,
           destinationQuery: targetDest, 
           checkInDate: targetIn,
           checkOutDate: targetOut,
@@ -321,7 +331,7 @@ const searchBooking = async (req, res) => {
           imageUrl: item.imageUrl
         }));
 
-        const savedData = await BookingHotel.insertMany(recordsToSave);
+        const savedData = await bookingHotels.insertMany(recordsToSave);
         
         // 🟢 MATCHES AMAZON PATTERN: Returns savedData directly to resolve frontend hover element issues
         return res.status(200).json({ 
@@ -340,21 +350,20 @@ const searchBooking = async (req, res) => {
   }
 };
 
-const Post = require('../models/post.model.js');
-
 const getNewsFeed = async (req, res) => {
   try {
     const { category } = req.query;
     if (!category) return res.status(400).json({ success: false, error: "Category property filter parameter required." });
 
-    const posts = await Post.find({ category })
-                           .sort({ publishedAt: -1 })
-                           .limit(40);
+    const feedPosts = await posts.find(
+      { category },
+      { sort: { publishedAt: -1 }, limit: 40 }
+    );
 
     return res.status(200).json({
       success: true,
-      count: posts.length,
-      data: posts
+      count: feedPosts.length,
+      data: feedPosts
     });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });

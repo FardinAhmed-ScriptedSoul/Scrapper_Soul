@@ -20,6 +20,8 @@ export function useTasks() {
   }, []);
 
   useEffect(() => {
+    // The effect starts asynchronous loading; state updates follow the HTTP response.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchTasks();
   }, [fetchTasks]);
 
@@ -37,38 +39,39 @@ export function useTasks() {
   };
 
   const exportTaskCSV = async (task) => {
-    try {
-      const engineRouteMap = {
-        amazon:  `/scrape/amazon?query=${encodeURIComponent(task.query || '')}`,
-        indeed:  `/scrape/indeed?role=${encodeURIComponent(task.query || '')}&location=${encodeURIComponent(task.location || '')}`,
-        booking: `/scrape/booking?destination=${encodeURIComponent(task.query || '')}`
-      };
-      const route = engineRouteMap[task.engine];
-      if (!route) return;
-
-      const response = await api.get(route);
-      const items = response?.data?.data || response?.data || [];
-      if (items.length === 0) return alert('No data to export.');
-
-      const headers = Object.keys(items[0]).join(',');
-      const rows = items.map(item =>
-        Object.values(item).map(v =>
-          typeof v === 'string' ? `"${v.replace(/\"/g, '\"\"')}"` : v
-        ).join(',')
-      ).join('\n');
-      const csv = `${headers}\n${rows}`;
-
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href     = url;
-      a.download = `${task.engine}_export_${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('CSV Export failure:', err);
-      alert('Failed to construct data file.');
+    const params = new URLSearchParams();
+    if (task.engine === 'amazon') {
+      params.set('query', task.query);
+    } else if (task.engine === 'indeed') {
+      params.set('role', task.query);
+      params.set('location', task.location);
+    } else if (task.engine === 'booking' && task.checkIn && task.checkOut) {
+      params.set('destination', task.query);
+      params.set('checkIn', task.checkIn);
+      params.set('checkOut', task.checkOut);
+    } else {
+      throw new Error('This task does not have enough search details to export.');
     }
+
+    const response = await api.get(`/scrape/${task.engine}?${params.toString()}`);
+    const items = response?.data;
+    if (!Array.isArray(items)) throw new Error('The server returned an invalid dataset.');
+    if (items.length === 0) throw new Error('No saved data is available for this task.');
+
+    const columns = Object.keys(items[0]);
+    const escapeCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const csv = [
+      columns.map(escapeCell).join(','),
+      ...items.map((item) => columns.map((column) => escapeCell(item[column])).join(','))
+    ].join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${task.engine}_export_${Date.now()}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   return { tasks, isLoading, error, refreshTasks: fetchTasks, controlTask, exportTaskCSV };

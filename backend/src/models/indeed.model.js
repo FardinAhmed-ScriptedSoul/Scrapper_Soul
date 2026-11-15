@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const indeedJobSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   jobTitleQuery: {
     type: String,
     required: true,
@@ -56,5 +60,6 @@ const indeedJobSchema = new mongoose.Schema({
 
 // Fast cache lookup by query pair
 indeedJobSchema.index({ jobTitleQuery: 1, locationQuery: 1 });
+indeedJobSchema.index({ userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('IndeedJob', indeedJobSchema);

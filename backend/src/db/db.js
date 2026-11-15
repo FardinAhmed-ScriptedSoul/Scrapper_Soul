@@ -17,7 +17,7 @@ const connectDB = async () => {
     console.log(`✅ MongoDB Connection Secured! Host Cluster: ${connectionInstance.connection.host}`);
   } catch (error) {
     console.error(`❌ Database Connection Interrupted: ${error.message}`);
-    process.exit(1);
+    throw error;
   }
 };
 

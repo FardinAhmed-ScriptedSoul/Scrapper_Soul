@@ -1,6 +1,10 @@
 const mongoose = require('mongoose');
 
 const amazonBookSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   searchTerm: {
     type: String,
     required: true,
@@ -41,5 +45,7 @@ const amazonBookSchema = new mongoose.Schema({
 }, { 
   timestamps: true // Automatically tracks 'createdAt' and 'updatedAt'
 });
+
+amazonBookSchema.index({ userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('AmazonBook', amazonBookSchema);

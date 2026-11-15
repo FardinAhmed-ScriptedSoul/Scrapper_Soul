@@ -1,8 +1,7 @@
 // src/context/AuthContext.jsx
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { authApi } from '../api/authApi.js';
-
-const AuthContext = createContext(null);
+import { AuthContext } from './authContext.js';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -33,7 +32,7 @@ export const AuthProvider = ({ children }) => {
           setIsAuthenticated(false);
           setUser(null);
         }
-      } catch (error) {
+      } catch {
         console.log("ℹ =] Active session validation check failed on browser initialization.");
         setIsAuthenticated(false);
         setUser(null);
@@ -126,12 +125,4 @@ const verifyOTP = async (email, otp) => {
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be nested within an AuthProvider.');
-  }
-  return context;
 };

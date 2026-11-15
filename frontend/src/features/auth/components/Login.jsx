@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import { useAuth } from '../../../context/AuthContext';
-import TerminalPanel from './TerminalPanel';
+import { useState } from 'react';
+import { useAuth } from '../../../context/useAuth.js';
 
 export default function Login({ onNavigate }) {
   const { login, verifyOTP, isOtpPending, pendingEmail, setIsOtpPending } = useAuth();
@@ -47,13 +46,8 @@ export default function Login({ onNavigate }) {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#0b141c] text-[#dae3ee] font-sans">
-      
-      {/* Left Column: Automated Telemetry Screen Text Panel */}
-      <TerminalPanel />
-
-      {/* Right Column: Centered Access Form Panel */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 md:py-12 select-none overflow-y-auto">
+    <div className="min-h-screen w-full bg-[#0b141c] text-[#dae3ee] font-sans">
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 md:py-12 overflow-y-auto">
         
         {/* Top Brand Branding Block */}
         <div className="flex flex-col items-center mb-6 md:mb-8 text-center w-full max-w-sm sm:max-w-md">
@@ -61,7 +55,7 @@ export default function Login({ onNavigate }) {
             <span className="material-symbols-outlined text-blue-400 text-2xl">terminal</span>
           </div>
           <h1 className="text-xl md:text-2xl font-bold tracking-wide text-white">Scrapper-Soul</h1>
-          <p className="text-xs text-slate-400 font-medium mt-1">Enterprise Web Intelligence Portal</p>
+          <p className="text-xs text-slate-400 font-medium mt-1">Collect and review data from configured sources.</p>
         </div>
 
         {/* Main Glass-Panel Form Container */}
@@ -73,7 +67,7 @@ export default function Login({ onNavigate }) {
             <p className="text-xs text-slate-400 mt-1">
               {isOtpPending 
                 ? `Enter the 6-digit access token transmitted to ${pendingEmail}` 
-                : 'Access your extraction infrastructure.'}
+                : 'Sign in to search and review collected data.'}
             </p>
           </div>
 
@@ -118,9 +112,6 @@ export default function Login({ onNavigate }) {
                     <label className="text-xs font-semibold text-slate-400 tracking-wider uppercase block">
                       Password
                     </label>
-                    <a href="#forgot" className="text-xs font-medium text-blue-400 hover:underline transition-colors">
-                      Forgot password?
-                    </a>
                   </div>
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-lg">
@@ -174,7 +165,7 @@ export default function Login({ onNavigate }) {
                   <span>{isOtpPending ? 'Authorizing Code...' : 'Verifying Operations...'}</span>
                 </>
               ) : (
-                <span>{isOtpPending ? 'Verify Identity Token' : 'Sign In to Dashboard'}</span>
+                <span>{isOtpPending ? 'Verify code' : 'Sign in'}</span>
               )}
             </button>
 
@@ -194,7 +185,7 @@ export default function Login({ onNavigate }) {
           {!isOtpPending && (
             <div className="text-center mt-6">
               <p className="text-xs text-slate-400">
-                New operator?{' '}
+                Don't have an account?{' '}
                 <button 
                   onClick={handleToggleView}
                   disabled={isSubmitting}
@@ -205,16 +196,6 @@ export default function Login({ onNavigate }) {
               </p>
             </div>
           )}
-        </div>
-
-        {/* Micro System Telemetry Status Footer */}
-        <div className="mt-6 md:mt-8 flex items-center space-x-4 text-[10px] font-mono tracking-widest text-slate-500 uppercase">
-          <div className="flex items-center space-x-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse"></span>
-            <span>Mainframe: Online</span>
-          </div>
-          <span className="text-slate-700">|</span>
-          <span>v2.4.0-Stable</span>
         </div>
 
       </div>

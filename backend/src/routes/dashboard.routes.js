@@ -20,12 +20,4 @@ router.post('/schedules',       dashboardCtrl.createSchedule);
 router.put('/schedules/:id',    dashboardCtrl.updateSchedule);
 router.delete('/schedules/:id', dashboardCtrl.deleteSchedule);
 
-// Settings — per user, persisted in MongoDB
-router.get('/settings', dashboardCtrl.getSettings);
-router.put('/settings', dashboardCtrl.saveSettings);
-router.post('/settings', dashboardCtrl.saveSettings);
-
-// Proxies
-router.get('/proxies', dashboardCtrl.getProxies);
-
 module.exports = router;

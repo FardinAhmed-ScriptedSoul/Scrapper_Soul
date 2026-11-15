@@ -43,23 +43,6 @@ export const authApi = {
    */
   logout: async () => {
     return await api.post('/auth/logout');
-  },
-
-  // --- Dynamic Dashboard Data Hooks ---
-  getTelemetry: async () => {
-    return await api.get('/dashboard/telemetry');
-  },
-
-  getTasks: async () => {
-    return await api.get('/dashboard/tasks');
-  },
-
-  getProxies: async () => {
-    return await api.get('/dashboard/proxies');
-  },
-
-  updateSettings: async (settingsData) => {
-    return await api.put('/dashboard/settings', settingsData);
   }
 };
 

@@ -1,7 +1,7 @@
 // backend/src/middleware/auth.middleware.js
 const jwt = require('jsonwebtoken');
 const config = require('../config/config.js');
-const userModel = require('../models/user.model.js');
+const { users } = require('../repositories');
 const redisClient = require('../config/redis.config.js');
 
 async function protect(req, res, next) {
@@ -33,7 +33,7 @@ async function protect(req, res, next) {
 
         // 🚀 FIX: Fetch EVERYTHING, but explicitly ask for the hidden select field (+tokenVersion)
         const userId = decoded.id || decoded._id;
-        const user = await userModel.findById(userId).select("+tokenVersion");
+        const user = await users.findById(userId, { select: '+tokenVersion' });
         
         if (!user) {
             return res.status(401).json({ status: "failed", message: "User session context no longer exists." });

@@ -1,4 +1,7 @@
-require('dotenv').config();
+const path = require('path');
+const dotenvPaths = [...new Set([process.env.DOTENV_CONFIG_PATH, '.env'].filter(Boolean))];
+require('dotenv').config({ path: dotenvPaths });
+const projectRoot = path.resolve(__dirname, '../../..');
 
 // 🚨 Core System Configuration Validation Guards
 if (!process.env.MONGODB_URI) {
@@ -31,6 +34,14 @@ const config = {
     },
     redis: {
         uri: process.env.REDIS_URL || null
+    },
+    python: {
+        executable: process.env.PYTHON_EXECUTABLE || path.join(
+            projectRoot,
+            'venv',
+            process.platform === 'win32' ? 'Scripts' : 'bin',
+            process.platform === 'win32' ? 'python.exe' : 'python'
+        )
     },
     mail: {
         user: process.env.EMAIL_USER,

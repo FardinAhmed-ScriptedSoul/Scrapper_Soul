@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useScrappers } from '../hooks/useScrappers';
 
 export default function ScrapperConfig() {
@@ -7,8 +7,6 @@ export default function ScrapperConfig() {
     error,
     results,
     newsFeed,
-    currentEngine,
-    setCurrentEngine,
     runAmazonScraper,
     runIndeedScraper,
     runBookingScraper,
@@ -32,7 +30,7 @@ export default function ScrapperConfig() {
     } else {
       setResults([]);
     }
-  }, [activeTab, newsCategory]);
+  }, [activeTab, newsCategory, fetchNewsFeed, setResults]);
 
   const handleExecuteScrape = async (e) => {
     e.preventDefault();
@@ -44,16 +42,16 @@ export default function ScrapperConfig() {
       } else if (activeTab === 'booking') {
         await runBookingScraper(bookingDest, bookingIn, bookingOut);
       }
-    } catch (err) {
-      console.warn("Active worker pipeline reported an execution break.");
+    } catch (requestError) {
+      console.error('Scrape request failed:', requestError);
     }
   };
 
   const getItemUrl = (item) => {
-    if (activeTab === 'amazon') return item.productUrl || '#';
-    if (activeTab === 'indeed') return item.jobUrl || '#';
-    if (activeTab === 'booking') return item.hotelUrl || '#';
-    return '#';
+    if (activeTab === 'amazon') return item.productUrl || '';
+    if (activeTab === 'indeed') return item.jobUrl || '';
+    if (activeTab === 'booking') return item.hotelUrl || '';
+    return '';
   };
 
   const getItemTitle = (item) => {
@@ -70,14 +68,11 @@ export default function ScrapperConfig() {
           { id: 'amazon', label: 'Amazon Core', icon: 'shopping_bag' },
           { id: 'indeed', label: 'Indeed Jobs', icon: 'work' },
           { id: 'booking', label: 'Booking Travel', icon: 'hotel' },
-          { id: 'news', label: 'Live Intel Feeds', icon: 'rss_feed' }
+          { id: 'news', label: 'News & Market', icon: 'rss_feed' }
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => {
-              setActiveTab(tab.id);
-              setCurrentEngine(tab.id);
-            }}
+            onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-4 py-2.5 border-t-2 uppercase font-bold tracking-wider text-[11px] transition-all cursor-pointer whitespace-nowrap ${
               activeTab === tab.id
                 ? 'bg-blue-950/20 border-blue-500 text-blue-400'
@@ -95,7 +90,7 @@ export default function ScrapperConfig() {
         <div className="bg-[#0d1117] border border-slate-800 rounded-2xl p-5 shadow-xl">
           <h3 className="text-white font-bold uppercase tracking-wide text-sm mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined text-blue-400">terminal</span>
-            Target Specification Parameters
+            Search source
           </h3>
 
           <form onSubmit={handleExecuteScrape} className="space-y-4">
@@ -159,10 +154,9 @@ export default function ScrapperConfig() {
                 <div className="flex flex-col gap-1.5">
                   <label className="text-slate-400 uppercase tracking-widest text-[10px]">Check-In Date (YYYY-MM-DD) *</label>
                   <input
-                    type="text"
+                    type="date"
                     value={bookingIn}
                     onChange={(e) => setBookingIn(e.target.value)}
-                    placeholder="2026-07-10"
                     className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 text-xs font-mono"
                     required
                   />
@@ -170,10 +164,9 @@ export default function ScrapperConfig() {
                 <div className="flex flex-col gap-1.5">
                   <label className="text-slate-400 uppercase tracking-widest text-[10px]">Check-Out Date (YYYY-MM-DD) *</label>
                   <input
-                    type="text"
+                    type="date"
                     value={bookingOut}
                     onChange={(e) => setBookingOut(e.target.value)}
-                    placeholder="2026-07-17"
                     className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-blue-500 text-xs font-mono"
                     required
                   />
@@ -193,7 +186,7 @@ export default function ScrapperConfig() {
               disabled={isLoading}
               className="w-full bg-blue-500 hover:bg-blue-600 text-[#0b141c] font-bold py-2.5 rounded-xl transition-all tracking-wider uppercase disabled:opacity-40 disabled:cursor-wait cursor-pointer text-center"
             >
-              {isLoading ? 'Assembling Headless Matrix Context...' : `Deploy ${activeTab} Core Engine`}
+              {isLoading ? 'Searching...' : `Search ${activeTab}`}
             </button>
           </form>
         </div>
@@ -201,7 +194,7 @@ export default function ScrapperConfig() {
         <div className="bg-[#0d1117] border border-slate-800 rounded-2xl p-4 flex flex-wrap gap-2 items-center justify-between shadow-md">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-white font-bold uppercase tracking-wider text-xs">Intelligence Classification Frame:</span>
+            <span className="text-white font-bold text-xs">News category</span>
           </div>
           <div className="flex gap-2">
             {[
@@ -222,7 +215,21 @@ export default function ScrapperConfig() {
                 {cat.label}
               </button>
             ))}
+              <button
+                type="button"
+                onClick={() => fetchNewsFeed(newsCategory)}
+                disabled={isLoading}
+                className="px-3 py-1.5 rounded-xl border border-slate-700 text-slate-300 text-[10px] disabled:opacity-50"
+              >
+                Refresh list
+              </button>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'news' && error && (
+        <div role="alert" className="rounded-xl border border-rose-900/50 bg-rose-950/30 p-3 text-xs text-rose-300">
+          {error}
         </div>
       )}
 
@@ -231,8 +238,8 @@ export default function ScrapperConfig() {
         <h3 className="text-white font-bold uppercase tracking-wide text-sm mb-4 flex items-center gap-2">
           <span className="material-symbols-outlined text-emerald-400">database</span>
           {activeTab === 'news'
-            ? `Live Aggregated Feed: ${newsCategory}`
-            : `${activeTab} Local Database Cache Frame`}
+            ? `News and market items: ${newsCategory}`
+            : `${activeTab} results`}
         </h3>
 
         {isLoading ? (
@@ -244,8 +251,8 @@ export default function ScrapperConfig() {
             )}
             <p className="tracking-widest uppercase text-[10px]">
               {activeTab === 'news'
-                ? 'Querying Production Aggregation Pipes...'
-                : 'Deploying Headless Scraper Engine...'}
+                ? 'Loading saved feed items...'
+                : 'Searching source...'}
             </p>
           </div>
 
@@ -253,7 +260,7 @@ export default function ScrapperConfig() {
           results.length === 0 ? (
             <div className="h-48 border border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-500">
               <span className="material-symbols-outlined text-2xl mb-1 opacity-30">inventory_2</span>
-              <p className="uppercase tracking-widest text-[10px]">No telemetry nodes mapped in localized view state.</p>
+              <p className="text-sm">No results yet. Run a search to collect data.</p>
             </div>
           ) : (
             <div className="overflow-x-auto border border-slate-900 rounded-xl">
@@ -283,9 +290,13 @@ export default function ScrapperConfig() {
                         {activeTab === 'booking' && `Rate: ${item.priceText || 'N/A'} | Score: ${item.rating ?? 0}`}
                       </td>
                       <td className="p-3 text-right">
-                        <a href={getItemUrl(item)} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline inline-flex items-center gap-1 bg-emerald-950/20 px-2.5 py-1 rounded-md border border-emerald-900/30 text-[10px] font-bold uppercase tracking-wide">
-                          Launch Node <span className="material-symbols-outlined text-[11px]">open_in_new</span>
-                        </a>
+                        {getItemUrl(item) ? (
+                          <a href={getItemUrl(item)} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline inline-flex items-center gap-1 bg-emerald-950/20 px-2.5 py-1 rounded-md border border-emerald-900/30 text-[10px] font-bold uppercase tracking-wide">
+                            Open source <span className="material-symbols-outlined text-[11px]">open_in_new</span>
+                          </a>
+                        ) : (
+                          <span className="text-slate-500">No source link</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -298,7 +309,7 @@ export default function ScrapperConfig() {
           newsFeed.length === 0 ? (
             <div className="h-48 border border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-500">
               <span className="material-symbols-outlined text-2xl mb-1 opacity-30">rss_feed</span>
-              <p className="uppercase tracking-widest text-[10px]">Background processor queue is empty. Run master pipeline sync.</p>
+              <p className="text-sm">No items are available in this category yet.</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -318,7 +329,7 @@ export default function ScrapperConfig() {
                       {post.title}
                     </h4>
                     <p className="text-slate-400 font-sans text-[11px] leading-relaxed line-clamp-3">
-                      {post.contentSummary || "No detailed validation text payload parsed."}
+                      {post.contentSummary || "No summary was provided by the source."}
                     </p>
                   </div>
                   <div className="pt-2 border-t border-slate-900/60 flex justify-end">

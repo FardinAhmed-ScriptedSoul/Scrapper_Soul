@@ -1,14 +1,14 @@
 
 // backend/src/schedulers/cronScheduler.js
 const cron = require('node-cron');
-const ScrapeSchedule = require('../models/scrapeSchedule.model.js');
+const { scrapeSchedules } = require('../repositories');
 const scrapeQueue = require('../queues/scrapeQueue.js'); // Imports clean configuration model instance
 
 const activeCrons = new Map();
 
 const initScheduler = async () => {
   try {
-    const schedules = await ScrapeSchedule.find({ isActive: true });
+    const schedules = await scrapeSchedules.find({ isActive: true });
     console.log(`🕐 CronScheduler: Loading ${schedules.length} active schedules...`);
     schedules.forEach(registerCron);
     console.log('✅ CronScheduler: All schedules registered successfully.');
@@ -20,6 +20,11 @@ const initScheduler = async () => {
 const registerCron = (schedule) => {
   if (!schedule || !schedule._id) return;
   const id = schedule._id.toString();
+
+  if (!['amazon', 'indeed'].includes(schedule.engine)) {
+    console.warn(`⚠️ Skipping unsupported scheduled scraper [${schedule.engine}] for schedule ${id}.`);
+    return;
+  }
 
   if (activeCrons.has(id)) {
     activeCrons.get(id).stop();
@@ -39,6 +44,7 @@ const registerCron = (schedule) => {
         engine: schedule.engine,
         query: schedule.query,
         location: schedule.location || '',
+        userId: schedule.userId,
         scheduleId: id
       }, {
         jobId: `cron-${id}-${Date.now()}`
@@ -61,9 +67,16 @@ const unregisterCron = (scheduleId) => {
   }
 };
 
+const stopScheduler = () => {
+  for (const [id, task] of activeCrons) {
+    task.stop();
+    activeCrons.delete(id);
+  }
+};
+
 const syncSchedule = async (scheduleId) => {
   try {
-    const schedule = await ScrapeSchedule.findById(scheduleId);
+    const schedule = await scrapeSchedules.findById(scheduleId);
     if (!schedule) return unregisterCron(scheduleId);
     
     if (schedule.isActive) {
@@ -76,4 +89,4 @@ const syncSchedule = async (scheduleId) => {
   }
 };
 
-module.exports = { initScheduler, syncSchedule, unregisterCron };
+module.exports = { initScheduler, syncSchedule, unregisterCron, stopScheduler };

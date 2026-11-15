@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import api from '../../../api/api'; 
-import { useAuth } from '../../../context/AuthContext'; // Import useAuth context hook
-import TerminalPanel from './TerminalPanel';
+import { useState } from 'react';
+import { useAuth } from '../../../context/useAuth.js';
+
+import { authApi } from '../../../api/authApi.js';
 
 export default function Register() {
   const { registerVerifySync } = useAuth(); // Consume the instant login synchronization hook
@@ -45,13 +45,8 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#0b141c] text-[#dae3ee] font-sans">
-      
-      {/* Left Column: Automated Telemetry Screen Text Panel */}
-      <TerminalPanel />
-
-      {/* Right Column: Centered Register Form Panel */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 md:py-12 select-none overflow-y-auto">
+    <div className="min-h-screen w-full bg-[#0b141c] text-[#dae3ee] font-sans">
+      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 md:py-12 overflow-y-auto">
         
         {/* Top Brand Branding Block */}
         <div className="flex flex-col items-center mb-6 md:mb-8 text-center w-full max-w-sm sm:max-w-md">
@@ -59,7 +54,7 @@ export default function Register() {
             <span className="material-symbols-outlined text-blue-400 text-2xl">terminal</span>
           </div>
           <h1 className="text-xl md:text-2xl font-bold tracking-wide text-white">Scrapper-Soul</h1>
-          <p className="text-xs text-slate-400 font-medium mt-1">Enterprise Web Intelligence Portal</p>
+          <p className="text-xs text-slate-400 font-medium mt-1">Collect and review data from configured sources.</p>
         </div>
 
         {/* Main Glass-Panel Form Container */}
@@ -71,7 +66,7 @@ export default function Register() {
             <p className="text-xs text-slate-400 mt-1">
               {isOtpPending 
                 ? `Enter verification node code transmitted to ${formData.email}` 
-                : 'Join the extraction network.'}
+                : 'Create an account to search and save results.'}
             </p>
           </div>
 
@@ -178,24 +173,14 @@ export default function Register() {
               {isSubmitting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-[#0b141c] border-t-transparent rounded-full animate-spin"></div>
-                  <span>Provisioning Node...</span>
+                  <span>Creating account...</span>
                 </>
               ) : (
-                <span>{isOtpPending ? 'Activate Core Node' : 'Initialize Access'}</span>
+                <span>{isOtpPending ? 'Verify code' : 'Create account'}</span>
               )}
             </button>
           </form>
 
-        </div>
-
-        {/* Micro System Telemetry Status Footer */}
-        <div className="mt-6 md:mt-8 flex items-center space-x-4 text-[10px] font-mono tracking-widest text-slate-500 uppercase">
-          <div className="flex items-center space-x-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981] animate-pulse"></span>
-            <span>Mainframe: Online</span>
-          </div>
-          <span className="text-slate-700">|</span>
-          <span>v2.4.0-Stable</span>
         </div>
 
       </div>

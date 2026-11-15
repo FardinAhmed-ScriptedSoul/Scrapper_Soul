@@ -102,12 +102,14 @@ async function verifyCachedOTPToken(email, inputOtp, purpose = 'registration') {
 }
 
 // Clear memory maps periodically to keep memory usage minimal
-setInterval(() => {
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(() => {
     const now = Date.now();
     for (const [key, data] of localOtpCache.entries()) {
-        if (now > data.expiresAt) localOtpCache.delete(key);
+      if (now > data.expiresAt) localOtpCache.delete(key);
     }
-}, 5 * 60 * 1000);
+  }, 5 * 60 * 1000);
+}
 
 module.exports = {
     sendAndStoreOTP,

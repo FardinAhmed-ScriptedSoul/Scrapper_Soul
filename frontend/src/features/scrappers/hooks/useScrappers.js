@@ -1,117 +1,104 @@
-import { useState } from 'react';
-import axios from 'axios';
-
-axios.defaults.withCredentials = true;
-
-const BACKEND_BASE_URL = 'http://localhost:3000';
+import { useState, useCallback } from 'react';
+import api from '../../../api/api.js';
 
 export const useScrappers = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState([]);
   const [newsFeed, setNewsFeed] = useState([]);
-  const [currentEngine, setCurrentEngine] = useState('amazon');
 
   // --- 1. Amazon Inventory Scraper Execution Pipeline ---
-  const runAmazonScraper = async (searchQuery) => {
+  const runAmazonScraper = useCallback(async (searchQuery) => {
     setIsLoading(true);
     setError(null);
-    setCurrentEngine('amazon'); // Synchronous tracking alignment
     try {
-      const response = await axios.get(`${BACKEND_BASE_URL}/api/v1/scrape/amazon`, {
+      const response = await api.get('/scrape/amazon', {
         params: { query: searchQuery }
       });
-      const dataArray = response.data.data || [];
+      const dataArray = response?.data || [];
       setResults(dataArray);
       return dataArray;
     } catch (err) {
-      const msg = err.response?.data?.error || "Amazon cluster automation fault.";
+      const msg = err.data?.error || err.message || "Amazon cluster automation fault.";
       setError(msg);
       setResults([]);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   // --- 2. Indeed Jobs Scraper Execution Pipeline ---
-  const runIndeedScraper = async (role, location) => {
+  const runIndeedScraper = useCallback(async (role, location) => {
     setIsLoading(true);
     setError(null);
-    setCurrentEngine('indeed'); // Synchronous tracking alignment
     try {
-      const response = await axios.get(`${BACKEND_BASE_URL}/api/v1/scrape/indeed`, {
+      const response = await api.get('/scrape/indeed', {
         params: { role, location }
       });
-      const dataArray = response.data.data || [];
+      const dataArray = response?.data || [];
       setResults(dataArray);
       return dataArray;
     } catch (err) {
-      const msg = err.response?.data?.error || "Indeed target aggregation error.";
+      const msg = err.data?.error || err.message || "Indeed target aggregation error.";
       setError(msg);
       setResults([]);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   // --- 3. Booking Engine Scraper Execution Pipeline ---
-  const runBookingScraper = async (destination, checkIn, checkOut) => {
+  const runBookingScraper = useCallback(async (destination, checkIn, checkOut) => {
     setIsLoading(true);
     setError(null);
-    setCurrentEngine('booking'); // Synchronous tracking alignment
     try {
-      const response = await axios.get(`${BACKEND_BASE_URL}/api/v1/scrape/booking`, {
+      const response = await api.get('/scrape/booking', {
         params: { destination, checkIn, checkOut }
       });
-      const dataArray = response.data.data || [];
+      const dataArray = response?.data || [];
       setResults(dataArray);
       return dataArray;
     } catch (err) {
-      const msg = err.response?.data?.error || "Booking timeline verification rejected.";
+      const msg = err.data?.error || err.message || "Booking timeline verification rejected.";
       setError(msg);
       setResults([]);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   // --- 4. Live News Feed Ingestion Pipeline ---
-  const fetchNewsFeed = async (categoryName) => {
+  const fetchNewsFeed = useCallback(async (categoryName) => {
     setIsLoading(true);
     setError(null);
-    setCurrentEngine('news'); // Synchronous tracking alignment
     try {
-      const response = await axios.get(`${BACKEND_BASE_URL}/api/v1/feed`, {
+      const response = await api.get('/feed', {
         params: { category: categoryName }
       });
-      const dataArray = response.data.data || [];
+      const dataArray = response?.data || [];
       setNewsFeed(dataArray);
       return dataArray;
     } catch (err) {
-      const msg = err.response?.data?.error || "Failed to sync platform news intelligence maps.";
+      const msg = err.data?.error || err.message || "Failed to sync platform news intelligence maps.";
       setError(msg);
       setNewsFeed([]);
-      throw err;
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   return {
     isLoading,
     error,
     results,
     newsFeed,
-    currentEngine,
-    setCurrentEngine,
     runAmazonScraper,
     runIndeedScraper,
     runBookingScraper,
     fetchNewsFeed,
-    setResults,
-    setNewsFeed
+    setResults
   };
 };

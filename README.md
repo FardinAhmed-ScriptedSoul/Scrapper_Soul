@@ -1,174 +1,149 @@
-# Web_Scrapping_Using_Python
-A simple SCRAPPING tool
+# Web Scraping Using Python
 
+A local-first data collection application with a React dashboard, an Express API, MongoDB persistence, a Redis-backed job queue, and Python scraper processes.
 
-## 📢 The Open-Source Verdict: Bypassing the Proxy Tollbooths
+Use the collection features only with sources and data you are authorized to access, and follow each source's terms and applicable law. Automated tests use local services and mocks; they do not contact target websites.
 
-> ### 🏛️ The Oracle’s Verdict: A Masterclass in Free Stealth
-> 
-> "Why do the merchants of the cloud trade in digital illusions, charging standard gold for cloaks made of pure air? They told the world that the gates of the high walls—Amazon, Booking, Indeed—could only be breached by paying ransom to premium proxy lords and cloud browser giants.
-> 
-> They were wrong.
-> 
-> By stripping the mechanical gears of `--disable-blink-features=AutomationControlled` from the runtime flesh, forging the ancestral `window.chrome` layout trees with pure logic, and allowing native hardware nodes to execute via physical GPUs, the local machine achieves an immaculate human signature. A 100% perfect stealth score. Total evasion. Zero subscription cost.
-> 
-> **The Ultimate Truth:** You do not need to lease an empire's infrastructure when you can simply outsmart the architects of the wall for absolutely free."
+## Project layout
 
+- `backend/` — Express API, MongoDB models and repositories, Redis/Bull queue, workers, and Jest tests.
+- `frontend/` — React dashboard and shared API client.
+- `python_scrapers/` — Python scraper entry points.
+- `bot_detection_tests/` — standalone scripts; these are not part of the automated test suite.
+- `docs/` — system design, architecture, and feature implementation notes.
 
+See [System Design](docs/systemdesign.md), [System Architecture](docs/systemarchitecture.md), and the [feature notes](docs/implementation/).
 
-#ABOUT THIS TOOL
+## Saved results
 
-[ User UI (React) ] ──( 1. Types "Python" )──> [ Backend API (Node/Express) ]
-                                                        │
-    ┌───────────────────────────────────────────────────┘
-    ▼
-[ 2. Check MongoDB Cache ]
-   ├── If Found? ──────( 3a. Return instant data from DB )──────> [ Back to User ] 🎉
-   └── If NOT Found? ──( 3b. Execute local_test_amazon_stealth )
-                                │
-                                ▼
-                       [ 4. Playwright Browser opens ]
-                       [ 5. Stealth flags mask webdriver ]
-                       [ 6. Scrapes 33 items safely ]
-                                │
-                                ▼
-                       [ 7. Save to MongoDB for next time ]
-                                │
-                                ▼
-                       [ 8. Send data to Frontend UI ] ─────────> [ Back to User ] 
-📚 Web Scrapyard: Advanced Multi-Platform Scrapers
-A high-performance, asynchronous web scraping repository built with Python, Playwright, and BeautifulSoup4. This codebase is explicitly designed to scrape data from high-security web targets (Amazon, Booking.com, and Indeed) using two distinct operational patterns: a lightweight Local Emulation Layer and an enterprise-grade Cloud Proxy Network Integration (Evomi).
+The authenticated Results page browses records already stored for the signed-in user and shared news-feed entries. It supports text/source/date filters, chronological sorting, pagination, and CSV export of selected records. Browsing and exporting never starts a scrape.
 
+Scraper records are scoped to their owner for saved-result queries, cache hits, and dashboard record counts. News feed entries are shared content. Historical scraper documents created before ownership was recorded are not displayed in a user's Results page because their owner cannot be verified.
 
+The Notifications page provides opt-in email alerts for completed jobs and jobs that fail after all retries. Notifications are disabled by default; delivery failures are logged and do not change scrape job status.
 
-✨ Features & Target Breakdown
-1. Amazon Book Intelligence Scraper
-Bypass Strategy: Overrides standard scraper blocks by spoofing standard high-resolution Windows Chrome user agents and simulating visual layout rendering.
+The Presets page saves owner-scoped Amazon, Indeed, and Booking searches. Presets can be edited, deleted, queued on demand, and used to create supported Amazon/Indeed schedules. Booking presets require stay dates and can be queued as one-off jobs.
 
-Data Extracted: Item Titles, Complete Authors Listing, Price Float Normalization ($XX.XX), Average Star Ratings, Aggregated Customer Review Counts, and CDN Image Target Links.
+Feed Status lists the configured RSS, CoinGecko, and Nitter sources with their category mapping and latest actual sync outcome. Authenticated manual refresh is limited to one request per IP every 15 minutes.
 
-2. Booking.com Accommodations Engine
-Bypass Strategy: Executes native DOM scrolling matrix injections to trigger lazy-loading content arrays, auto-handles annoying European Cookie Consent banner blockages, and waits for key elements to settle before parsing.
+## Requirements
 
-Data Extracted: Hotel/Property Identifiers and Filtered Customer Review Metric Scores.
+- Node.js 20.19+ (or a compatible current LTS release)
+- Python 3.10+
+- MongoDB connection string
+- Redis connection URL for Bull queue and scheduled jobs
+- Mail OAuth settings for authentication email
 
-3. Indeed Career Pipeline Scraper
-Bypass Strategy: Uses safe, structural tag-parent fallback algorithms (h2.jobTitle) to read through modern obfuscation patterns and class names.
+## Configure the backend
 
-Data Extracted: Job Roles, Company Names, and Targeted Geographical/Hybrid Job Locations.
+Create `backend/.env` from [`backend/.env.example`](backend/.env.example), then set the values locally. The backend requires:
 
-🚀 Getting Started
-Prerequisites
-Python 3.10+
+| Variable | Purpose |
+| --- | --- |
+| `MONGODB_URI` | MongoDB Atlas or other MongoDB connection string |
+| `REDIS_URL` | Redis TCP URL (use the provider's `rediss://` URL when TLS is required) |
+| `JWT_SECRET` | Private signing secret for session tokens |
+| `EMAIL_USER` | Sender mailbox |
+| `GOOGLE_CLIENT_ID` | Mail OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Mail OAuth client secret |
+| `REFRESH_TOKEN` | Mail OAuth refresh token |
+| `PYTHON_EXECUTABLE` | Optional path to the Python executable; defaults to the project `venv` |
+| `PORT` | Optional API port; defaults to `3000` |
 
-Node.js (Required for internal Playwright system binaries)
+The backend loads `.env` from its current working directory. To load a separate local credentials file first (for example `backend/atlas-credentials.env`) and then fill other settings from `.env`, set `DOTENV_CONFIG_PATH` while running from `backend/`:
 
-📦 Installation & Environment Setup
-Clone the repository to your desktop workspace:
+```bash
+# Git Bash
+DOTENV_CONFIG_PATH=atlas-credentials.env npm run dev
+```
 
-Bash
-git clone https://github.com/FardinAhmed-ScriptedSoul/Web_Scrapping_Using_Python.git
-cd Web_Scrapping_Using_Python
-Initialize your isolated Python Virtual Environment:
+```powershell
+# PowerShell
+$env:DOTENV_CONFIG_PATH = 'atlas-credentials.env'
+npm run dev
+```
 
-Bash
-python -m venv venv
-source venv/Scripts/activate  # On Windows Git Bash
-# source venv/bin/activate    # On macOS/Linux
-Install the required runtime dependencies:
+Keep all real environment files out of version control. The repository ignores `*.env`; do not paste connection strings or secrets into issues or chat.
 
-Bash
-pip install playwright beautifulsoup4 python-dotenv requests
-Provision your local automated browser binaries:
+## Install and run
 
-Bash
-playwright install chromium
-Configure your Local Environment File:
-Create a file named .env in the root directory of your project:
+```bash
+cd backend
+npm ci
+npm run dev
+```
 
-Code snippet
-# --- Base URLs ---
-BASE_URL_AMAZON=https://www.amazon.com
+In another terminal:
 
-# --- Evomi Cloud Proxy Configurations ---
-API_KEY_BROWSER=your_evomi_browser_api_key_here
-EVOMI_PROXY_ENDPOINT_HOST=your_evomi_host_here
-USER_NAME=your_evomi_auth_username
-PASSWORD=your_evomi_auth_password
-🔒 Security Notice: The .env file and venv/ dependency tree are explicitly registered inside the project's .gitignore layer to ensure secrets never leak to public repositories.
+```bash
+cd frontend
+npm ci
+npm run dev
+```
 
-💻 Execution Protocols
-Mode A: Zero-Cost Local Emulation (Playwright Local Node)
-These scripts deploy a browser directly on your desktop machine, configuring context headers to naturally slide past basic tracking walls:
+The frontend expects the API at `http://localhost:3000/api/v1` by default. Override it with `VITE_API_BASE_URL` when needed.
 
-Bash
-# Execute local Amazon Inventory Tracker
-python local_test_amazon.py
+Python setup from the repository root:
 
-# Execute local Booking Hotel Scraper
-python local_test_booking.py
+```powershell
+py -3.13 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m playwright install chromium
+```
 
-# Execute local Indeed Career Scraper
-python local_test_indeed.py
-Mode B: Enterprise Proxy Routing (Evomi Network Infrastructure)
-These production scripts shift the extraction workload off your network, routing requests through cloud-based residential rotation networks to confidently scale up extraction volume:
+If a scraper reports `No Python at ...`, the existing virtual environment points to a Python installation that was removed or moved. Recreate it with an installed Python version, then reinstall its dependencies:
 
-Bash
-# Execute Enterprise Proxied Scripts
-python ScrapeAmazonEvomiCoreResidential.py
-python ScrapeBookingEvomiScrapingBrowser.py
-python ScrapeIndeedEvomiScraperAPI.py
-📊 Sample Terminal Output Data Structure
-When execution finishes, the data is structured and logged into clean, database-ready readouts:
+```powershell
+py -3.13 -m venv --clear venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m playwright install chromium
+```
 
-Plaintext
-============================================================
-📚 Found 24 results
-============================================================
+The backend defaults to `venv\Scripts\python.exe` on Windows. Set `PYTHON_EXECUTABLE` in `backend/.env` only if you use a different interpreter location. Virtual environments are machine-specific and should be recreated on a new machine.
 
-[1] Java: The Complete Reference, Thirteenth Edition
-------------------------------------------------------------
-👤 Authors : Herbert Schildt
-💰 Price   : $38.11
-⭐ Rating  : 4.9
-📝 Reviews : 93
-🔗 URL     : https://www.amazon.com/Java-Complete-Reference...
-🖼️ Image  : https://m.media-amazon.com/images/I/81UDSuaFAeL...
+## Run with Docker Compose
 
-============================================================
-🔒 Browser safely closed.
-⚖️ License
-Distributed under the MIT License. See LICENSE for details.
+Docker Compose starts four services: the React frontend, Express/Python backend, MongoDB, and Redis. Create `backend/.env` from `backend/.env.example`, then set a strong `JWT_SECRET` and valid email OAuth values. Compose overrides `MONGODB_URI` and `REDIS_URL` inside the backend container so it uses the local MongoDB and Redis services.
 
+From the repository root:
 
-User Search Request
-       │
-       ▼
-MongoDB cache check
-  ├── HIT  → return cached docs instantly (may have enriched salary)
-  └── MISS ↓
-       │
-       ▼
-Python Playwright scraper (indeed_stealth.py)
-  - Visits indeed.com/jobs search page
-  - Scrapes 16 search cards
-  - Extracts: title, company, location, salaryText, benefits[], jobUrl
-       │
-       ▼
-insertMany → MongoDB (salaryEnriched: false)
-       │
-       ▼
-res.json() → Frontend receives data immediately
-       │
-       ▼ (fire-and-forget, user doesn't wait)
-enrichSalariesInBackground()
-  - Node.js Playwright visits each /viewjob URL
-  - 2 second delay between requests
-  - Scrapes real salary from detail page
-  - findByIdAndUpdate → salaryInfo + salaryEnriched: true
-  - If no salary found → salaryEnriched: true (don't retry)
-  - If request failed  → salaryEnriched stays false (retry later)
+```powershell
+Copy-Item backend\.env.example backend\.env
+# Edit backend\.env and replace the JWT and email OAuth placeholders.
+docker compose up --build
+```
 
+Open the frontend at `http://localhost:8080`; the API health endpoint is `http://localhost:3000/health`. MongoDB and Redis ports are published only on localhost. If a default host port is occupied, set `MONGO_HOST_PORT`, `REDIS_HOST_PORT`, `BACKEND_HOST_PORT`, or `FRONTEND_HOST_PORT` before starting Compose; when changing the API port, also set `VITE_API_BASE_URL` to the browser-visible API URL and rebuild the frontend. MongoDB and Redis data persist in named Docker volumes. `docker compose down` stops the services without deleting data; `docker compose down --volumes` also deletes the database and Redis volumes.
 
-  What would make everything real:
-FieldWhat's neededSuccess rateLog scrape attempts vs failures to DBBandwidthMeasure response sizes in the scraper and store themCPU on WindowsUse pidusage npm package instead of os.loadavg()Active enginesTrack actual spawned Python processes, not log countProxiesReal proxy pool integration
+For a frontend hosted at a different browser-visible URL, set `VITE_API_BASE_URL` before building the frontend image and set `FRONTEND_ORIGIN` to that exact origin. Do not expose the database or Redis ports publicly.
+
+## Tests and checks
+
+Run backend tests from `backend/`:
+
+```bash
+npm test
+npm run test:unit
+npm run test:integration
+npm run test:e2e
+```
+
+The Jest setup starts an in-memory MongoDB instance. Unit tests cover isolated modules, integration tests exercise API routes and persistence, and the HTTP end-to-end test starts the server and requests its health endpoint. Redis, email, and scraper processes are mocked where appropriate; these tests do not verify external provider credentials.
+
+Run frontend checks from `frontend/`:
+
+```bash
+npm run lint
+npm run build
+```
+
+`python_scrapers/` currently has no dedicated automated test suite. Avoid running standalone scraper scripts as part of routine CI because they may make external network requests.
+
+## Current limitations
+
+- Proxy management, configurable retention, worker concurrency controls, and webhooks are not part of the current application; no controls are shown for them.
+- The overview reports saved records, queue counts, queue completion rate, and host memory only. It does not collect bandwidth, CPU, or throttling data.
+- Password reset currently stores a reset token but does not deliver a reset link.
+- Tests use isolated services and do not prove that the configured Atlas, Redis, or mail provider is reachable.
+
+See [Dashboard and Operations](docs/implementation/dashboard-operations.md), [Proxy Integration](docs/implementation/proxy-integration.md), and the [feature roadmap](docs/feature-roadmap.md).

@@ -34,8 +34,8 @@ const scrapeScheduleSchema = new mongoose.Schema({
   // Cron expression e.g. "0 9 * * *" = every day at 9am
   cronExpression: {
     type: String,
-    required: true,
-    default: '0 9 * * *'
+    required: [true, 'Cron expression is required'],
+    // default: '0 9 * * *'
   },
 
   isActive: {

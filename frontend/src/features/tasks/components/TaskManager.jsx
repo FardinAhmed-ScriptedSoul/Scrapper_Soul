@@ -1,9 +1,8 @@
 
-import React from 'react';
 import { useTasks } from '../hooks/useTasks';
 
 export default function TaskManager() {
-  const { tasks, isLoading, error, controlTask, exportDataset } = useTasks();
+  const { tasks, isLoading, error, controlTask, exportTaskCSV } = useTasks();
 
   const handleControlTask = async (id, action) => {
     try {
@@ -15,9 +14,9 @@ export default function TaskManager() {
 
   const handleExport = async (task) => {
     try {
-      await exportDataset(task);
+      await exportTaskCSV(task);
     } catch (err) {
-      alert(`Export failed: ${err.message}`);
+      alert(err.message || 'Export failed.');
     }
   };
 
@@ -48,8 +47,8 @@ export default function TaskManager() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-900 pb-6">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-wide text-white">Active Extraction Tasks</h1>
-          <p className="text-xs text-slate-400 mt-1">Real Bull queue — live job progress, history, and CSV export.</p>
+          <h1 className="text-xl md:text-2xl font-bold text-white">Tasks</h1>
+          <p className="text-sm text-slate-400 mt-1">Current and recently completed scraper jobs.</p>
         </div>
         <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
           <span className="px-2.5 py-1 bg-blue-950/30 border border-blue-900/30 text-blue-400 rounded-lg">
@@ -93,7 +92,6 @@ export default function TaskManager() {
                     </h3>
                   </div>
                   <div className="flex items-center space-x-3 text-xs font-mono shrink-0">
-                    <span className="text-slate-500">Speed: <span className="text-slate-300">{task.speed}</span></span>
                     <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${
                       task.status === 'Running'   ? 'bg-blue-950/40 text-blue-400 border-blue-900/40' :
                       task.status === 'Completed' ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/40' :
@@ -109,10 +107,8 @@ export default function TaskManager() {
                 {/* Progress Bar */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-xs font-semibold text-slate-400">
-                    <span>Chunk Buffer Compilation</span>
-                    <span className="font-mono text-slate-300">
-                      {task.processed} records · {progress}%
-                    </span>
+                    <span>Job progress</span>
+                    <span className="font-mono text-slate-300">{progress}%</span>
                   </div>
                   <div className="w-full bg-slate-950 rounded-full h-2 border border-slate-900 overflow-hidden">
                     <div
@@ -141,14 +137,10 @@ export default function TaskManager() {
 
                 {/* Controls */}
                 <div className="flex justify-between items-center pt-2 border-t border-slate-900 text-xs">
-                  <span className="text-[11px] text-slate-500 font-mono">Worker Node Thread Matrix Verified</span>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {task.engine}{task.location ? ` · ${task.location}` : ''}
+                  </span>
                   <div className="flex items-center gap-2">
-                    {task.status === 'Running' && (
-                      <button onClick={() => handleControlTask(task.id, 'pause')}
-                        className="px-2.5 py-1 rounded-lg border border-slate-800 text-slate-400 hover:text-amber-400 hover:border-amber-900/40 transition-colors cursor-pointer flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">pause</span> Pause
-                      </button>
-                    )}
                     {task.status === 'Queued' && (
                       <button onClick={() => handleControlTask(task.id, 'kill')}
                         className="px-2.5 py-1 rounded-lg border border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-900/40 transition-colors cursor-pointer flex items-center gap-1">
